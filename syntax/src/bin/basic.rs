@@ -5,11 +5,13 @@ use fula_syntax::{
 
 fn main() {
     let code = r#"
-        if 3 + 5 = 8
-        then if 4 < 7
-            then 1337
-            else 64
-        else 42
+        const main: @ -> Int =
+            let x = 3 + 4 = 8;
+            if x
+            then if 4 < 7
+                then || 1337
+                else 64
+            else 42;
     "#;
 
     let tokens = TokenList::lex(code).unwrap();

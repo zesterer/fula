@@ -1,6 +1,6 @@
 use std::{
-    collections::HashMap,
     fmt,
+    collections::VecDeque,
 };
 use crate::{
     src::SrcRef,
@@ -38,7 +38,7 @@ impl<T> From<(T, SrcRef)> for AstNode<T> {
 
 #[derive(Debug)]
 pub struct Ast<'a> {
-    consts: HashMap<&'a str, Decl<'a>>,
+    decls: Vec<Decl<'a>>,
 }
 
 #[derive(Debug)]
@@ -54,13 +54,22 @@ pub enum Expr<'a> {
     Unary(UnaryOp, AstNode<Self>),
     Binary(BinaryOp, AstNode<Self>, AstNode<Self>),
     Ternary(TernaryOp, AstNode<Self>, AstNode<Self>, AstNode<Self>),
+    Bind(AstNode<Pattern<'a>>, AstNode<Self>, AstNode<Self>),
+    Func(AstNode<Pattern<'a>>, AstNode<Self>),
     Cast(AstNode<Self>, AstNode<Type<'a>>),
+}
+
+#[derive(Debug)]
+pub enum Pattern<'a> {
+    Ident(&'a str),
 }
 
 #[derive(Debug)]
 pub enum Type<'a> {
     Unspecified,
-    Ident(AstNode<&'a str>),
+    Universe,
+    Ident(&'a str),
+    Func(AstNode<Self>, AstNode<Self>),
 }
 
 impl<'a> Default for Type<'a> {
@@ -109,16 +118,15 @@ pub enum TernaryOp {
 
 impl<'a> Ast<'a> {
     pub fn new() -> Self {
-        Self { consts: HashMap::new() }
+        Self { decls: Vec::new() }
     }
 
     pub fn parse<'b: 'a>(token_list: &'b TokenList<'a>) -> Result<Self, ParseError<'a, 'b>> {
         parse(token_list.tokens())
     }
 
-    pub fn insert_const(&mut self, name: &'a str, ty: impl Into<AstNode<Type<'a>>>, expr: impl Into<AstNode<Expr<'a>>>) {
-        let (ty, expr) = (ty.into(), expr.into());
-        self.consts.insert(name, Decl::Const(name, ty, expr));
+    pub fn insert_decl(&mut self, decl: Decl<'a>) {
+        self.decls.push(decl);
     }
 }
 
@@ -129,6 +137,19 @@ impl<'a> Expr<'a> {
 
     pub fn literal(litr: Literal, r: SrcRef) -> AstNode<Self> {
         AstNode(Expr::Literal(litr).into(), r)
+    }
+
+    pub fn func(
+        mut args: VecDeque<AstNode<Pattern<'a>>>,
+        a: impl Into<AstNode<Expr<'a>>>,
+    ) -> AstNode<Self> {
+        let a = a.into();
+        let r = a.src_ref();
+
+        match args.pop_front() {
+            Some(pat) => AstNode(Expr::Func(pat, Expr::func(args, a)).into(), r),
+            None => a,
+        }
     }
 
     pub fn unary(
@@ -159,6 +180,41 @@ impl<'a> Expr<'a> {
         let (a, b, c) = (a.into(), b.into(), c.into());
         let r = a.src_ref().union(b.src_ref()).union(c.src_ref());
         AstNode(Expr::Ternary(op, a, b, c).into(), r)
+    }
+
+    pub fn bind(
+        pat: impl Into<AstNode<Pattern<'a>>>,
+        a: impl Into<AstNode<Expr<'a>>>,
+        b: impl Into<AstNode<Expr<'a>>>,
+    ) -> AstNode<Self> {
+        let (pat, a, b) = (pat.into(), a.into(), b.into());
+        let r = pat.src_ref().union(a.src_ref()).union(b.src_ref());
+        AstNode(Expr::Bind(pat, a, b).into(), r)
+    }
+}
+
+impl<'a> Pattern<'a> {
+    pub fn ident(s: &'a str, r: SrcRef) -> AstNode<Self> {
+        AstNode(Pattern::Ident(s).into(), r)
+    }
+}
+
+impl<'a> Type<'a> {
+    pub fn ident(s: &'a str, r: SrcRef) -> AstNode<Self> {
+        AstNode(Type::Ident(s).into(), r)
+    }
+
+    pub fn universe(r: SrcRef) -> AstNode<Self> {
+        AstNode(Type::Universe.into(), r)
+    }
+
+    pub fn func(
+        param: impl Into<AstNode<Type<'a>>>,
+        ret: impl Into<AstNode<Type<'a>>>,
+    ) -> AstNode<Self> {
+        let (param, ret) = (param.into(), ret.into());
+        let r = param.src_ref().union(ret.src_ref());
+        AstNode(Type::Func(param, ret).into(), r)
     }
 }
 

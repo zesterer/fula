@@ -34,9 +34,12 @@ pub enum Lexeme<'a> {
 
     Pipe,
     Comma,
+    Colon,
     Semicolon,
     LParen,
     RParen,
+    Arrow,
+    Universe,
 
     Const,
     Let,
@@ -194,6 +197,9 @@ impl<'a> TokenList<'a> {
                             "/" => tokens.push(Token(Lexeme::Div, r)),
                             "%" => tokens.push(Token(Lexeme::Rem, r)),
                             "!" => tokens.push(Token(Lexeme::Not, r)),
+                            ":" => tokens.push(Token(Lexeme::Colon, r)),
+                            "->" => tokens.push(Token(Lexeme::Arrow, r)),
+                            "@" => tokens.push(Token(Lexeme::Universe, r)),
                             s => errors.push(LexError::invalid_symbol(s, r)),
                         }
                         next = false;
