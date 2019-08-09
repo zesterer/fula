@@ -1,4 +1,8 @@
-use crate::src::SrcRef;
+use crate::{
+    SyntaxError,
+    src::SrcRef,
+    ast::Ast,
+};
 
 #[derive(Debug)]
 pub enum LexErrorKind<'a> {
@@ -27,7 +31,7 @@ impl<'a> LexError<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Lexeme<'a> {
     True,
     False,
@@ -142,7 +146,7 @@ impl<'a> TokenList<'a> {
                     c => errors.push(LexError::unexpected_char(c, SrcRef::from(i))),
                 },
                 State::Word => match c {
-                    c if c.is_alphabetic() || c == '_' => {},
+                    c if c.is_alphanumeric() || c == '_' => {},
                     _ => {
                         let r = SrcRef::from((start, i));
                         match &code[start..i] {
@@ -229,5 +233,11 @@ impl<'a> TokenList<'a> {
 
     pub fn tokens(&self) -> &[Token<'a>] {
         &self.0
+    }
+
+    pub fn parse<'b>(&'b self) -> Result<Ast<'a>, Vec<SyntaxError<'a, 'b>>>
+        where 'b: 'a
+    {
+        Ast::parse(self).map_err(|err| vec![SyntaxError::Parse(err)])
     }
 }

@@ -1,5 +1,6 @@
 use std::{
     rc::Rc,
+    cell::RefCell,
     fmt,
 };
 use fula_syntax::{
@@ -16,12 +17,20 @@ pub struct Program<'a> {
 pub struct IrNode<'a, T>(Box<T>, TypeInfo<'a>, SrcRef);
 
 impl<'a, T> IrNode<'a, T> {
+    pub fn parts_mut(&mut self) -> (&mut T, &mut TypeInfo<'a>, SrcRef) {
+        (&mut self.0, &mut self.1, self.2)
+    }
+
     pub fn inner(&self) -> &T {
         &self.0
     }
 
     pub fn type_info(&self) -> &TypeInfo<'a> {
         &self.1
+    }
+
+    pub fn type_info_mut(&mut self) -> &mut TypeInfo<'a> {
+        &mut self.1
     }
 
     pub fn src_ref(&self) -> SrcRef {
@@ -32,9 +41,9 @@ impl<'a, T> IrNode<'a, T> {
 impl<'a, T: fmt::Debug> fmt::Debug for IrNode<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.alternate() {
-            write!(f, "{:#?}", &self.0)
+            write!(f, "{:#?} [{:?}, {:?}]", &self.0, self.1, self.2)
         } else {
-            write!(f, "{:?}", &self.0)
+            write!(f, "{:?} [{:?}, {:?}]", &self.0, self.1, self.2)
         }
     }
 }
@@ -79,20 +88,16 @@ pub enum Decl<'a> {
     Data(&'a str, TypeInfo<'a>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TypeInfo<'a> {
     Unknown,
-    Definitely(Rc<Type<'a>>),
-}
-
-#[derive(Debug)]
-pub enum Type<'a> {
     Primitive(PrimitiveType),
     Func(Box<TypeInfo<'a>>, Box<TypeInfo<'a>>),
     Named(&'a str),
+    Derived(Rc<RefCell<TypeInfo<'a>>>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum PrimitiveType {
     Universe,
     Bool,
@@ -127,13 +132,13 @@ pub enum Value {
     String(String),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum UnaryOp {
     Not,
     Neg,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -153,7 +158,7 @@ pub enum BinaryOp {
     MoreEq,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TernaryOp {
     IfElse,
 }
@@ -171,13 +176,25 @@ impl<'a> Program<'a> {
         self.decls.iter()
     }
 
-    pub fn compile(&mut self) -> Result<(), Vec<CompileError>> {
-        let ambiguities = self.get_type_ambiguities();
-        if ambiguities.len() > 0 {
-            return Err(ambiguities
+    pub fn declarations_mut(&mut self) -> impl Iterator<Item=&mut Decl<'a>> {
+        self.decls.iter_mut()
+    }
+
+    pub fn compile(&mut self) -> Result<(), Vec<CompileError<'a>>> {
+        match self.infer_types() {
+            errors if errors.len() > 0 => return Err(errors
                 .into_iter()
                 .map(|err| err.into())
-                .collect());
+                .collect()),
+            _ => {},
+        }
+
+        match self.get_type_ambiguities() {
+            errors if errors.len() > 0 => return Err(errors
+                .into_iter()
+                .map(|err| err.into())
+                .collect()),
+            _ => {},
         }
 
         Ok(())
@@ -210,13 +227,13 @@ impl<'a, 'b> From<&'b ast::Type<'a>> for TypeInfo<'a> {
     fn from(ty: &'b ast::Type<'a>) -> Self {
         match ty {
             ast::Type::Unspecified => TypeInfo::Unknown,
-            ast::Type::Universe => TypeInfo::Definitely(Type::Primitive(PrimitiveType::Universe).into()),
-            ast::Type::Func(param, ret) => TypeInfo::Definitely(Type::Func(Box::new(param.inner().into()), Box::new(ret.inner().into())).into()),
-            ast::Type::Ident("Bool") => TypeInfo::Definitely(Type::Primitive(PrimitiveType::Bool).into()),
-            ast::Type::Ident("Int") => TypeInfo::Definitely(Type::Primitive(PrimitiveType::Int).into()),
-            ast::Type::Ident("Float") => TypeInfo::Definitely(Type::Primitive(PrimitiveType::Float).into()),
-            ast::Type::Ident("String") => TypeInfo::Definitely(Type::Primitive(PrimitiveType::String).into()),
-            ast::Type::Ident(ident) => TypeInfo::Definitely(Type::Named(ident).into()),
+            ast::Type::Universe => TypeInfo::Primitive(PrimitiveType::Universe),
+            ast::Type::Func(param, ret) => TypeInfo::Func(Box::new(param.inner().into()), Box::new(ret.inner().into())),
+            ast::Type::Ident("Bool") => TypeInfo::Primitive(PrimitiveType::Bool),
+            ast::Type::Ident("Int") => TypeInfo::Primitive(PrimitiveType::Int),
+            ast::Type::Ident("Float") => TypeInfo::Primitive(PrimitiveType::Float),
+            ast::Type::Ident("String") => TypeInfo::Primitive(PrimitiveType::String),
+            ast::Type::Ident(ident) => TypeInfo::Named(ident),
         }
     }
 }
@@ -252,6 +269,17 @@ impl<'a> From<&'a ast::Literal> for Value {
             ast::Literal::Int(x) => Value::Int(*x),
             ast::Literal::Float(x) => Value::Float(*x),
             ast::Literal::String(x) => Value::String(x.clone()),
+        }
+    }
+}
+
+impl Value {
+    pub fn type_info<'a>(&self) -> TypeInfo<'a> {
+        match self {
+            Value::Bool(_) => TypeInfo::Primitive(PrimitiveType::Bool),
+            Value::Int(_) => TypeInfo::Primitive(PrimitiveType::Int),
+            Value::Float(_) => TypeInfo::Primitive(PrimitiveType::Float),
+            Value::String(_) => TypeInfo::Primitive(PrimitiveType::String),
         }
     }
 }
