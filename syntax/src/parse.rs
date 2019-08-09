@@ -183,7 +183,29 @@ fn parse_unary<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<
         _ => None,
     }) {
         Some(op) => Ok(Expr::unary(op, parse_unary(iter)?)),
-        None => parse_atom(iter),
+        None => parse_call(iter),
+    }
+}
+
+fn parse_call<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'a, 'b>>
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+{
+    let mut expr = parse_atom(iter)?;
+
+    loop {
+        expr = match attempt(iter, |iter| try_parse(iter, |tok, iter| match tok.lexeme() {
+            Lexeme::LParen => match parse_args(iter) {
+                Ok(args) => try_parse(iter, |tok, _| match tok.lexeme() {
+                    Lexeme::RParen => Some(Ok(args)),
+                    l => Some(Err(ParseError::expected(&Lexeme::RParen, l, tok.src_ref()))),
+                }),
+                Err(err) => Some(Err(err)),
+            },
+            l => Some(Err(ParseError::expected(&Lexeme::LParen, l, tok.src_ref()))),
+        }).unwrap()) {
+            Some(args) => Expr::call(expr, args),
+            None => break Ok(expr),
+        };
     }
 }
 
@@ -251,15 +273,15 @@ fn parse_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'
         .unwrap()
 }
 
-fn parse_params<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<Pattern<'a>>>, ParseError<'a, 'b>>
+fn parse_args<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<Expr<'a>>>, ParseError<'a, 'b>>
     where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
 {
     let mut args = VecDeque::new();
 
     loop {
-        match attempt(iter, parse_pattern) {
-            Ok(pat) => args.push_back(pat),
-            Err(_) => break,
+        match attempt(iter, parse_expr) {
+            Some(pat) => args.push_back(pat),
+            None => break,
         }
 
         match try_parse(iter, |tok, _| match tok.lexeme() {
@@ -272,6 +294,29 @@ fn parse_params<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<Pattern<'a>>
     }
 
     Ok(args)
+}
+
+fn parse_params<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<Pattern<'a>>>, ParseError<'a, 'b>>
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+{
+    let mut params = VecDeque::new();
+
+    loop {
+        match attempt(iter, parse_pattern) {
+            Some(pat) => params.push_back(pat),
+            None => break,
+        }
+
+        match try_parse(iter, |tok, _| match tok.lexeme() {
+            Lexeme::Comma => Some(()),
+            _ => None,
+        }) {
+            Some(_) => {},
+            None => break,
+        }
+    }
+
+    Ok(params)
 }
 
 fn parse_pattern<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Pattern<'a>>, ParseError<'a, 'b>>
@@ -304,6 +349,7 @@ fn parse_singular_type<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, Par
     where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
 {
     try_parse(iter, |tok, _| match tok.lexeme() {
+        Lexeme::Ident("_") => Some(Ok(Type::unspecified(tok.src_ref()))),
         Lexeme::Ident(ident) => Some(Ok(Type::ident(ident, tok.src_ref()))),
         Lexeme::Universe => Some(Ok(Type::universe(tok.src_ref()))),
         l => Some(Err(ParseError::expected(Thing::Pattern, l, tok.src_ref()))),
@@ -324,13 +370,13 @@ fn try_parse<'a, 'c: 'a, I, R, F>(iter: &mut I, f: F) -> Option<R>
     Some(tok)
 }
 
-fn attempt<'a, 'c: 'a, I, R, E, F>(iter: &mut I, f: F) -> Result<R, E>
+fn attempt<'a, 'c: 'a, I, R, E, F>(iter: &mut I, f: F) -> Option<R>
     where
         I: Iterator<Item=&'a Token<'c>> + Clone,
         F: FnOnce(&mut I) -> Result<R, E>,
 {
     let mut iter2 = iter.clone();
-    let tok = f(&mut iter2)?;
+    let tok = f(&mut iter2).ok()?;
     *iter = iter2;
-    Ok(tok)
+    Some(tok)
 }

@@ -56,6 +56,7 @@ pub enum Expr<'a> {
     Ternary(TernaryOp, AstNode<Self>, AstNode<Self>, AstNode<Self>),
     Bind(AstNode<Pattern<'a>>, AstNode<Self>, AstNode<Self>),
     Func(AstNode<Pattern<'a>>, AstNode<Self>),
+    Call(AstNode<Self>, AstNode<Self>),
     Cast(AstNode<Self>, AstNode<Type<'a>>),
 }
 
@@ -128,6 +129,10 @@ impl<'a> Ast<'a> {
     pub fn insert_decl(&mut self, decl: Decl<'a>) {
         self.decls.push(decl);
     }
+
+    pub fn declarations(&self) -> impl Iterator<Item=&Decl<'a>> {
+        self.decls.iter()
+    }
 }
 
 impl<'a> Expr<'a> {
@@ -140,14 +145,27 @@ impl<'a> Expr<'a> {
     }
 
     pub fn func(
-        mut args: VecDeque<AstNode<Pattern<'a>>>,
+        mut params: VecDeque<AstNode<Pattern<'a>>>,
         a: impl Into<AstNode<Expr<'a>>>,
     ) -> AstNode<Self> {
         let a = a.into();
         let r = a.src_ref();
 
+        match params.pop_front() {
+            Some(pat) => AstNode(Expr::Func(pat, Expr::func(params, a)).into(), r),
+            None => a,
+        }
+    }
+
+    pub fn call(
+        a: impl Into<AstNode<Expr<'a>>>,
+        mut args: VecDeque<AstNode<Expr<'a>>>,
+    ) -> AstNode<Self> {
+        let a = a.into();
+        let r = a.src_ref();
+
         match args.pop_front() {
-            Some(pat) => AstNode(Expr::Func(pat, Expr::func(args, a)).into(), r),
+            Some(expr) => AstNode(Expr::Call(Expr::call(a, args), expr).into(), r),
             None => a,
         }
     }
@@ -202,6 +220,10 @@ impl<'a> Pattern<'a> {
 impl<'a> Type<'a> {
     pub fn ident(s: &'a str, r: SrcRef) -> AstNode<Self> {
         AstNode(Type::Ident(s).into(), r)
+    }
+
+    pub fn unspecified(r: SrcRef) -> AstNode<Self> {
+        AstNode(Type::Unspecified.into(), r)
     }
 
     pub fn universe(r: SrcRef) -> AstNode<Self> {

@@ -12,6 +12,9 @@ dependencies = [
 [[package]]
 name = "fula-compiler"
 version = "0.1.0"
+dependencies = [
+ "fula-syntax 0.1.0",
+]
 
 [[package]]
 name = "fula-syntax"
