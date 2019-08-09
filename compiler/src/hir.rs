@@ -6,6 +6,7 @@ use fula_syntax::{
     ast,
     src::SrcRef,
 };
+use crate::CompileError;
 
 #[derive(Debug)]
 pub struct Program<'a> {
@@ -13,6 +14,20 @@ pub struct Program<'a> {
 }
 
 pub struct IrNode<'a, T>(Box<T>, TypeInfo<'a>, SrcRef);
+
+impl<'a, T> IrNode<'a, T> {
+    pub fn inner(&self) -> &T {
+        &self.0
+    }
+
+    pub fn type_info(&self) -> &TypeInfo<'a> {
+        &self.1
+    }
+
+    pub fn src_ref(&self) -> SrcRef {
+        self.2
+    }
+}
 
 impl<'a, T: fmt::Debug> fmt::Debug for IrNode<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -31,6 +46,16 @@ impl<'a, 'b, T, U: From<&'b T>> From<&'b ast::AstNode<T>> for IrNode<'a, U> {
 }
 
 pub struct UntypedIrNode<T>(Box<T>, SrcRef);
+
+impl<T> UntypedIrNode<T> {
+    pub fn inner(&self) -> &T {
+        &self.0
+    }
+
+    pub fn src_ref(&self) -> SrcRef {
+        self.1
+    }
+}
 
 impl<T: fmt::Debug> fmt::Debug for UntypedIrNode<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -86,7 +111,7 @@ pub enum Expr<'a> {
     Bind(TypeInfo<'a>, UntypedIrNode<Pattern<'a>>, UntypedIrNode<Self>, IrNode<'a, Self>),
     Func(IrNode<'a, Pattern<'a>>, IrNode<'a, Self>),
     Call(IrNode<'a, Self>, IrNode<'a, Self>),
-    Cast(IrNode<'a, Self>, TypeInfo<'a>),
+    Cast(IrNode<'a, Self>, UntypedIrNode<TypeInfo<'a>>),
 }
 
 #[derive(Debug)]
@@ -140,6 +165,22 @@ impl<'a> Program<'a> {
 
     pub fn insert_decl(&mut self, decl: Decl<'a>) {
         self.decls.push(decl);
+    }
+
+    pub fn declarations(&self) -> impl Iterator<Item=&Decl<'a>> {
+        self.decls.iter()
+    }
+
+    pub fn compile(&mut self) -> Result<(), Vec<CompileError>> {
+        let ambiguities = self.get_type_ambiguities();
+        if ambiguities.len() > 0 {
+            return Err(ambiguities
+                .into_iter()
+                .map(|err| err.into())
+                .collect());
+        }
+
+        Ok(())
     }
 }
 
@@ -199,7 +240,7 @@ impl<'a, 'b> From<&'b ast::Expr<'a>> for Expr<'a> {
             ast::Expr::Bind(pat, expr, body) => Expr::Bind(TypeInfo::Unknown, pat.into(), expr.into(), body.into()),
             ast::Expr::Func(pat, body) => Expr::Func(pat.into(), body.into()),
             ast::Expr::Call(expr, a) => Expr::Call(expr.into(), a.into()),
-            ast::Expr::Cast(expr, ty) => Expr::Cast(expr.into(), ty.inner().into()),
+            ast::Expr::Cast(expr, ty) => Expr::Cast(expr.into(), ty.into()),
         }
     }
 }

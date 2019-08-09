@@ -29,6 +29,9 @@ fn main() {
     let ast = Ast::parse(&tokens).unwrap();
     println!("AST: {:#?}", ast);
 
-    let hir = hir::Program::from(&ast);
+    let mut hir = hir::Program::from(&ast);
     println!("HIR: {:#?}", hir);
+
+    let program = hir.compile();
+    println!("Program: {:#?}", program);
 }
