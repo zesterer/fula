@@ -1,3 +1,10 @@
+const tail: [_] -> [_] = |_| [];
+
+const len: [_] -> Int = |l|
+	if l = []
+	then 0
+	else 1 + len(tail(l));
+
 # Inferred to [Int]
 const my_list: [_] = [x, y, z, [a, b, 3]];
 
