@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    collections::HashMap,
+};
 use super::*;
 
 impl Value {
@@ -18,11 +21,11 @@ impl<'a> Type<'a> {
             (this @ Type::Unknown, other) => *this = other.clone(),
             (this, other @ Type::Unknown) => *other = this.clone(),
             (Type::Func(a, b), Type::Func(c, d)) => {
-                a.homogenize(r0, c, r1)?;
-                b.homogenize(r0, d, r1)?;
+                a.homogenize(c)?;
+                b.homogenize(d)?;
             },
             (Type::List(a), Type::List(b)) => {
-                a.homogenize(r0, b, r1)?;
+                a.homogenize(b)?;
             },
             (Type::Primitive(a), Type::Primitive(b)) if a == b => {},
             (this, other) => return Err(HirError::TypeMismatch(r0, this.clone(), r1, other.clone())),
@@ -40,20 +43,30 @@ impl<'a> Type<'a> {
 }
 
 impl<'a> TypeInfo<'a> {
-    pub fn homogenize(&mut self, r0: SrcRef, other: &mut TypeInfo<'a>, r1: SrcRef) -> Result<(), HirError<'a>> {
+    pub fn homogenize(&mut self, other: &mut TypeInfo<'a>) -> Result<(), HirError<'a>> {
         if Rc::ptr_eq(&self.ty, &other.ty) {
             Ok(())
         } else {
-            self.ty.borrow_mut().homogenize(r0, &mut other.ty.borrow_mut(), r1)?;
+            self.ty.borrow_mut().homogenize(self.src_ref, &mut other.ty.borrow_mut(), other.src_ref)?;
             self.ty = other.ty.clone();
+            self.src_ref = self.src_ref.homogenize(other.src_ref);
             Ok(())
         }
     }
 }
 
 impl UnaryOp {
-    fn homogenize<'a>(&self, val_type_info: &mut TypeInfo<'a>, r: SrcRef, a: &mut IrNode<'a, Expr<'a>>) -> Result<(), HirError<'a>> {
+    fn homogenize<'a>(&self, val_type_info: &mut TypeInfo<'a>, a: &mut IrNode<'a, Expr<'a>>) -> Result<(), HirError<'a>> {
         if Rc::ptr_eq(&val_type_info.ty, &a.type_info.ty) {
+            return Ok(());
+        }
+
+        // Not enough information
+
+        if let (Type::Unknown, Type::Unknown) = (
+            val_type_info.ty.borrow().deref(),
+            a.type_info.ty.borrow().deref(),
+        ) {
             return Ok(());
         }
 
@@ -66,7 +79,6 @@ impl UnaryOp {
 
         for (op, ret, (x,)) in &ops {
             if self == op {
-
                 if match (
                     val_type_info.ty.borrow_mut().known_or(&Type::Primitive(ret.clone())),
                     a.type_info.ty.borrow_mut().known_or(&Type::Primitive(x.clone())),
@@ -74,19 +86,30 @@ impl UnaryOp {
                     (Type::Primitive(val_ty), Type::Primitive(a_ty)) if val_ty == ret && a_ty == x => true,
                     _ => false,
                 } {
-                    a.type_info.homogenize(a.src_ref, &mut TypeInfo::from(Type::Primitive(x.clone())), r)?;
-                    val_type_info.homogenize(r, &mut TypeInfo::from(Type::Primitive(ret.clone())), r)?;
+                    a.type_info.homogenize(&mut TypeInfo::new(Type::Primitive(x.clone()), val_type_info.src_ref))?;
+                    val_type_info.homogenize(&mut TypeInfo::new(Type::Primitive(ret.clone()), val_type_info.src_ref))?;
                     return Ok(());
                 }
             }
         }
 
-        return Err(HirError::InvalidUnary(r, self.clone(), a.type_info.ty.borrow().clone()));
+        return Err(HirError::InvalidUnary(val_type_info.src_ref, self.clone(), a.type_info.ty.borrow().clone()));
     }
 }
 
 impl BinaryOp {
-    fn homogenize<'a>(&self, val_type_info: &mut TypeInfo<'a>, r: SrcRef, a: &mut IrNode<'a, Expr<'a>>, b: &mut IrNode<'a, Expr<'a>>) -> Result<(), HirError<'a>> {
+    fn homogenize<'a>(&self, val_type_info: &mut TypeInfo<'a>, a: &mut IrNode<'a, Expr<'a>>, b: &mut IrNode<'a, Expr<'a>>) -> Result<(), HirError<'a>> {
+        // Not enough information
+
+        if let (Type::Unknown, Type::Unknown, Type::Unknown) = (
+            val_type_info.ty.borrow().deref(),
+            a.type_info.ty.borrow().deref(),
+            b.type_info.ty.borrow().deref(),
+        ) {
+            return Ok(());
+        }
+
+
         // List operations
 
         if match (
@@ -99,8 +122,8 @@ impl BinaryOp {
             (BinaryOp::NotEq, Type::List(_), Type::List(_), Type::List(_)) => true,
             _ => false,
         } {
-            a.type_info.homogenize(a.src_ref, &mut b.type_info, b.src_ref)?;
-            val_type_info.homogenize(r, &mut TypeInfo::from(Type::Primitive(PrimitiveType::Bool)), SrcRef::None)?;
+            a.type_info.homogenize(&mut b.type_info)?;
+            val_type_info.homogenize(&mut TypeInfo::new(Type::Primitive(PrimitiveType::Bool), val_type_info.src_ref))?;
             return Ok(());
         }
 
@@ -139,7 +162,8 @@ impl BinaryOp {
             (BinaryOp::MoreEq, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
         ];
 
-        for (op, ret, (x, y)) in &ops {
+        let (mut num_matches, mut match_idx) = (0, None);
+        for (i, (op, ret, (x, y))) in ops.iter().enumerate() {
             if self == op {
                 if match (
                     val_type_info.ty.borrow_mut().known_or(&Type::Primitive(ret.clone())),
@@ -149,15 +173,22 @@ impl BinaryOp {
                     (Type::Primitive(val_ty), Type::Primitive(a_ty), Type::Primitive(b_ty)) if val_ty == ret && a_ty == x && b_ty == y => true,
                     _ => false,
                 } {
-                    a.type_info.homogenize(a.src_ref, &mut TypeInfo::from(Type::Primitive(x.clone())), r)?;
-                    b.type_info.homogenize(b.src_ref, &mut TypeInfo::from(Type::Primitive(y.clone())), r)?;
-                    val_type_info.homogenize(r, &mut TypeInfo::from(Type::Primitive(ret.clone())), r)?;
-                    return Ok(());
+                    num_matches += 1;
+                    match_idx = Some(i);
                 }
             }
         }
 
-        return Err(HirError::InvalidBinary(r, self.clone(), a.type_info.ty.borrow().clone(), b.type_info.ty.borrow().clone()));
+        match (num_matches, match_idx) {
+            (1, Some(match_idx)) => {
+                let (_, ret, (x, y)) = &ops[match_idx];
+                a.type_info.homogenize(&mut TypeInfo::new(Type::Primitive(x.clone()), val_type_info.src_ref))?;
+                b.type_info.homogenize(&mut TypeInfo::new(Type::Primitive(y.clone()), val_type_info.src_ref))?;
+                val_type_info.homogenize(&mut TypeInfo::new(Type::Primitive(ret.clone()), val_type_info.src_ref))?;
+                Ok(())
+            },
+            _ => Err(HirError::InvalidBinary(val_type_info.src_ref, self.clone(), a.type_info.ty.borrow().clone(), b.type_info.ty.borrow().clone())),
+        }
     }
 }
 
@@ -165,11 +196,21 @@ impl TernaryOp {
     fn homogenize<'a>(
         &self,
         val_type_info: &mut TypeInfo<'a>,
-        r: SrcRef,
         a: &mut IrNode<'a, Expr<'a>>,
         b: &mut IrNode<'a, Expr<'a>>,
         c: &mut IrNode<'a, Expr<'a>>,
     ) -> Result<(), HirError<'a>> {
+        // Not enough information
+
+        if let (Type::Unknown, Type::Unknown, Type::Unknown, Type::Unknown) = (
+            val_type_info.ty.borrow().deref(),
+            a.type_info.ty.borrow().deref(),
+            b.type_info.ty.borrow().deref(),
+            c.type_info.ty.borrow().deref(),
+        ) {
+            return Ok(());
+        }
+
         match self {
             TernaryOp::IfElse => {
                 match a.type_info.ty.borrow().deref() {
@@ -178,55 +219,92 @@ impl TernaryOp {
                     a_ty => return Err(HirError::ExpectedType(a.src_ref, a_ty.clone(), Type::Primitive(PrimitiveType::Bool))),
                 }
 
-                a.type_info.homogenize(a.src_ref, &mut TypeInfo::from(Type::Primitive(PrimitiveType::Bool)), r)?;
-                c.type_info.homogenize(c.src_ref, &mut b.type_info, b.src_ref)?;
-                val_type_info.homogenize(r, &mut b.type_info, r)?;
+                a.type_info.homogenize(&mut TypeInfo::new(Type::Primitive(PrimitiveType::Bool), val_type_info.src_ref))?;
+                c.type_info.homogenize(&mut b.type_info)?;
+                val_type_info.homogenize(&mut b.type_info)?;
                 Ok(())
             },
         }
     }
 }
 
+pub enum Scope<'a, 'b> {
+    Global(HashMap<&'a str, TypeInfo<'a>>),
+    Local(&'a str, TypeInfo<'a>, &'b Self),
+}
+
+impl<'a, 'b> Scope<'a, 'b> {
+    pub fn global(types: HashMap<&'a str, TypeInfo<'a>>) -> Self {
+        Scope::Global(types)
+    }
+
+    pub fn with<'c>(&'c self, name: &'a str, ty: TypeInfo<'a>) -> Scope<'a, 'c>
+        where 'b: 'c
+    {
+        Scope::Local(name, ty, self)
+    }
+
+    pub fn get(&self, name: &str) -> Option<TypeInfo<'a>> {
+        match self {
+            Scope::Global(types) => types.get(name).cloned(),
+            Scope::Local(local, ty, _) if *local == name => Some(ty.clone()),
+            Scope::Local(_, _, scope) => scope.get(name),
+        }
+    }
+}
+
 impl<'a> IrNode<'a, Expr<'a>> {
-    pub fn infer_types(&mut self) -> Result<(), HirError<'a>> {
+    pub fn infer_types(&mut self, scope: &Scope<'a, '_>) -> Result<(), HirError<'a>> {
         match self.inner.as_mut() {
-            Expr::Value(val) => self.type_info.ty.borrow_mut().homogenize(self.src_ref, &mut val.get_type(), self.src_ref)?,
-            Expr::Ident(_) => {},
+            Expr::Value(val) => self.type_info.homogenize(&mut TypeInfo::new(val.get_type(), self.src_ref))?,
+            Expr::Ident(name) => match scope.get(name) {
+                Some(mut ty) => self.type_info.homogenize(&mut ty)?,
+                None => return Err(HirError::CannotFindIdent(self.src_ref, name)),
+            },
             Expr::Unary(op, a) => {
-                a.infer_types()?;
-                op.homogenize(&mut self.type_info, self.src_ref, a)?;
+                a.infer_types(scope)?;
+                op.homogenize(&mut self.type_info, a)?;
             },
             Expr::Binary(op, a, b) => {
-                a.infer_types()?;
-                b.infer_types()?;
-                op.homogenize(&mut self.type_info, self.src_ref, a, b)?;
+                a.infer_types(scope)?;
+                b.infer_types(scope)?;
+                op.homogenize(&mut self.type_info, a, b)?;
             },
             Expr::Ternary(op, a, b, c) => {
-                a.infer_types()?;
-                b.infer_types()?;
-                c.infer_types()?;
-                op.homogenize(&mut self.type_info, self.src_ref, a, b, c)?;
+                a.infer_types(scope)?;
+                b.infer_types(scope)?;
+                c.infer_types(scope)?;
+                op.homogenize(&mut self.type_info, a, b, c)?;
             },
-            Expr::Bind(_, val, body) => {
-                val.infer_types()?;
-                body.infer_types()?;
+            Expr::Bind(pat, val, body) => {
+                val.infer_types(scope)?;
+                let scope = match pat.inner.deref() {
+                    Pattern::Ident(name) => scope.with(name, val.type_info.clone()),
+                };
+                pat.type_info.homogenize(&mut val.type_info)?;
+
+                body.infer_types(&scope)?;
+                self.type_info.homogenize(&mut body.type_info)?;
             },
             Expr::Call(func, a) => {
-                func.infer_types()?;
-                a.infer_types()?;
-                func.type_info.homogenize(self.src_ref, &mut TypeInfo::from(Type::Func(TypeInfo::unknown(), a.type_info.clone())), self.src_ref)?;
+                func.infer_types(scope)?;
+                a.infer_types(scope)?;
+                func.type_info.homogenize(&mut TypeInfo::new(Type::Func(a.type_info.clone(), TypeInfo::unknown()), func.src_ref))?;
                 if let Type::Func(a_ty, body_ty) = &mut func.type_info.ty.borrow_mut().deref_mut() {
-                    a.type_info.homogenize(a.src_ref, a_ty, a.src_ref)?;
-                    self.type_info.homogenize(self.src_ref, body_ty, func.src_ref)?;
+                    a.type_info.homogenize(a_ty)?;
+                    self.type_info.homogenize(body_ty)?;
                 } else {
                     panic!();
                 }
             },
-            Expr::Func(_, body) => {
-                body.infer_types()?;
-                self.type_info.homogenize(self.src_ref, &mut TypeInfo::from(Type::Func(TypeInfo::unknown(), body.type_info.clone())), self.src_ref)?;
+            Expr::Func(pat, body) => {
+                let scope = match pat.inner.deref() {
+                    Pattern::Ident(name) => scope.with(name, TypeInfo::new(Type::Unknown, pat.src_ref)),
+                };
+                body.infer_types(&scope)?;
+                self.type_info.homogenize(&mut TypeInfo::new(Type::Func(TypeInfo::unknown(), body.type_info.clone()), self.src_ref))?;
                 if let Type::Func(_, body_ty) = &mut self.type_info.ty.borrow_mut().deref_mut() {
-                    body.type_info.homogenize(body.src_ref, body_ty, body.src_ref)?;
+                    body.type_info.homogenize(body_ty)?;
                 } else {
                     panic!();
                 }
@@ -234,19 +312,18 @@ impl<'a> IrNode<'a, Expr<'a>> {
             Expr::List(elements) => {
                 elements
                     .iter_mut()
-                    .map(|e| e.infer_types())
+                    .map(|e| e.infer_types(scope))
                     .collect::<Result<(), _>>()?;
 
-                let mut list_type = TypeInfo::from(Type::List(elements.first_mut().map(|e| e.type_info.clone()).unwrap_or(TypeInfo::unknown())));
+                let mut list_type = TypeInfo::new(Type::List(elements.first_mut().map(|e| e.type_info.clone()).unwrap_or(TypeInfo::unknown())), self.src_ref);
                 // Homogenize the list type with the inner type
-                self.type_info.homogenize(self.src_ref, &mut list_type, self.src_ref)?;
+                self.type_info.homogenize(&mut list_type)?;
                 // Homogenize the inner types with the list type
-                let r = self.src_ref;
                 if let Type::List(inner_ty) = list_type.ty.borrow_mut().deref_mut() {
                     elements
                         .iter_mut()
                         .rev()
-                        .map(|e| e.type_info.homogenize(e.src_ref, inner_ty, r))
+                        .map(|e| e.type_info.homogenize(inner_ty))
                         .collect::<Result<(), _>>()?;
                 } else {
                     panic!();
@@ -262,15 +339,25 @@ impl<'a> Program<'a> {
     pub fn infer_types(&mut self) -> Vec<HirError<'a>> {
         let mut errors = Vec::new();
 
+        let scope = Scope::global(self
+            .declarations()
+            .filter_map(|decl| match decl {
+                Decl::Const(name, expr) => Some((*name, expr.type_info.clone())),
+                Decl::Data(_, _) => None,
+            })
+            .collect());
+
         for decl in self.declarations_mut() {
             match decl {
-                Decl::Const(_, val) => match val.infer_types() {
+                Decl::Const(_, val) => match val.infer_types(&scope) {
                     Ok(()) => {},
                     Err(err) => errors.push(err),
                 },
                 Decl::Data(_, _) => unimplemented!(),
             }
         }
+
+        println!("{:#?}", self);
 
         errors
     }

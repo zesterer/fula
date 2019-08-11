@@ -29,6 +29,10 @@ impl<'a> LexError<'a> {
     pub fn invalid_symbol(s: &'a str, src_ref: SrcRef) -> Self {
         Self { kind: LexErrorKind::InvalidSymbol(s), src_ref }
     }
+
+    pub fn get_src_refs(&self) -> Vec<SrcRef> {
+        vec![self.src_ref]
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -122,34 +126,28 @@ impl<'a> TokenList<'a> {
             let (i, c) = chars.clone().next().unwrap();
             let mut next = true;
             match &mut state {
-                State::Default => match c {
-                    '\0' => {
-                        tokens.push(Token(Lexeme::Eof, SrcRef::from(i)));
-                        break;
-                    },
-                    '#' => state = State::Comment,
-                    '"' => state = State::String(String::new()),
-                    '|' => tokens.push(Token(Lexeme::Pipe, SrcRef::from(i))),
-                    ',' => tokens.push(Token(Lexeme::Comma, SrcRef::from(i))),
-                    ';' => tokens.push(Token(Lexeme::Semicolon, SrcRef::from(i))),
-                    '(' => tokens.push(Token(Lexeme::LParen, SrcRef::from(i))),
-                    ')' => tokens.push(Token(Lexeme::RParen, SrcRef::from(i))),
-                    '[' => tokens.push(Token(Lexeme::LBrack, SrcRef::from(i))),
-                    ']' => tokens.push(Token(Lexeme::RBrack, SrcRef::from(i))),
-                    c if c.is_whitespace() => {},
-                    c if c.is_alphabetic() || c == '_' => {
-                        start = i;
-                        state = State::Word;
-                    },
-                    c if c.is_numeric() => {
-                        start = i;
-                        state = State::Number;
-                    },
-                    c if c.is_ascii_punctuation() && c != '_' => {
-                        start = i;
-                        state = State::Symbol;
-                    },
-                    c => errors.push(LexError::unexpected_char(c, SrcRef::from(i))),
+                State::Default => {
+                    start = i;
+                    match c {
+                        '\0' => {
+                            tokens.push(Token(Lexeme::Eof, SrcRef::from(i)));
+                            break;
+                        },
+                        '#' => state = State::Comment,
+                        '"' => state = State::String(String::new()),
+                        '|' => tokens.push(Token(Lexeme::Pipe, SrcRef::from(i))),
+                        ',' => tokens.push(Token(Lexeme::Comma, SrcRef::from(i))),
+                        ';' => tokens.push(Token(Lexeme::Semicolon, SrcRef::from(i))),
+                        '(' => tokens.push(Token(Lexeme::LParen, SrcRef::from(i))),
+                        ')' => tokens.push(Token(Lexeme::RParen, SrcRef::from(i))),
+                        '[' => tokens.push(Token(Lexeme::LBrack, SrcRef::from(i))),
+                        ']' => tokens.push(Token(Lexeme::RBrack, SrcRef::from(i))),
+                        c if c.is_whitespace() => {},
+                        c if c.is_alphabetic() || c == '_' => state = State::Word,
+                        c if c.is_numeric() => state = State::Number,
+                        c if c.is_ascii_punctuation() && c != '_' => state = State::Symbol,
+                        c => errors.push(LexError::unexpected_char(c, SrcRef::from(i))),
+                    }
                 },
                 State::Word => match c {
                     c if c.is_alphanumeric() || c == '_' => {},

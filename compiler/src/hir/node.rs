@@ -3,7 +3,7 @@ use fula_syntax::{
     src::SrcRef,
     ast,
 };
-use super::TypeInfo;
+use super::{TypeInfo, Type};
 
 pub struct IrNode<'a, T> {
     pub inner: Box<T>,
@@ -33,6 +33,6 @@ impl<'a, T: fmt::Debug> fmt::Debug for IrNode<'a, T> {
 
 impl<'a, 'b, T, U: From<&'b T>> From<&'b ast::AstNode<T>> for IrNode<'a, U> {
     fn from(node: &'b ast::AstNode<T>) -> Self {
-        Self::new(node.inner().into(), TypeInfo::unknown(), node.src_ref())
+        Self::new(node.inner().into(), TypeInfo::new(Type::Unknown, node.src_ref()), node.src_ref())
     }
 }

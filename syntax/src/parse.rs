@@ -49,6 +49,10 @@ impl<'a, 'b> ParseError<'a, 'b> {
             src_ref,
         }
     }
+
+    pub fn get_src_refs(&self) -> Vec<SrcRef> {
+        vec![self.src_ref]
+    }
 }
 
 pub fn parse<'a, 'b>(tokens: &'b [Token<'a>]) -> Result<Ast<'a>, ParseError<'a, 'b>>
@@ -193,9 +197,9 @@ fn parse_call<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'
     loop {
         expr = match attempt(iter, |iter| try_parse(iter, |tok, iter| match tok.lexeme() {
             Lexeme::LParen => match parse_args(iter) {
-                Ok(args) => try_parse(iter, |tok, _| match tok.lexeme() {
+                Ok(args) => try_parse(iter, |tok_r, _| match tok_r.lexeme() {
                     Lexeme::RParen => Some(Ok(args)),
-                    l => Some(Err(ParseError::expected(&Lexeme::RParen, l, tok.src_ref()))),
+                    l => Some(Err(ParseError::expected(&Lexeme::RParen, l, tok_r.src_ref()))),
                 }),
                 Err(err) => Some(Err(err)),
             },
@@ -351,16 +355,14 @@ fn parse_pattern<'a, 'b, I>(iter: &mut I) -> Result<AstNode<(Pattern<'a>, Type<'
 fn parse_type<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
     where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
 {
-    let mut ty = parse_type_atom(iter)?;
+    let ty = parse_type_atom(iter)?;
 
-    loop {
-        ty = match try_parse(iter, |tok, _| match tok.lexeme() {
-            Lexeme::Arrow => Some(()),
-            _ => None,
-        }) {
-            Some(()) => Type::func(ty, parse_type(iter)?),
-            None => break Ok(ty),
-        };
+    match try_parse(iter, |tok, _| match tok.lexeme() {
+        Lexeme::Arrow => Some(()),
+        _ => None,
+    }) {
+        Some(()) => Ok(Type::func(ty, parse_type(iter)?)),
+        None => Ok(ty),
     }
 }
 

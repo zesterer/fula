@@ -4,8 +4,8 @@ impl<'a, 'b> From<&'b ast::Decl<'a>> for Decl<'a> {
     fn from(decl: &'b ast::Decl<'a>) -> Self {
         match decl {
             ast::Decl::Const(name, ty, expr) =>
-                Decl::Const(name, IrNode::new(expr.inner().into(), Type::from(ty.inner()).into(), expr.src_ref())),
-            ast::Decl::Data(ident, ty) => Decl::Data(ident, Type::from(ty.inner()).into()),
+                Decl::Const(name, IrNode::new(expr.inner().into(), TypeInfo::new(ty.inner().into(), ty.src_ref()), expr.src_ref())),
+            ast::Decl::Data(ident, ty) => Decl::Data(ident, TypeInfo::new(ty.inner().into(), ty.src_ref())),
         }
     }
 }
@@ -20,8 +20,11 @@ impl<'a, 'b> From<&'b ast::Type<'a>> for Type<'a> {
             ast::Type::Ident("Float") => Type::Primitive(PrimitiveType::Float),
             ast::Type::Ident("String") => Type::Primitive(PrimitiveType::String),
             ast::Type::Ident(ident) => Type::Named(ident),
-            ast::Type::Func(param, ret) => Type::Func(Type::from(param.inner()).into(), Type::from(ret.inner()).into()),
-            ast::Type::List(ty) => Type::List(Type::from(ty.inner()).into()),
+            ast::Type::Func(param, ret) => Type::Func(
+                TypeInfo::new(param.inner().into(), param.src_ref()),
+                TypeInfo::new(ret.inner().into(), ret.src_ref()),
+            ),
+            ast::Type::List(ty) => Type::List(TypeInfo::new(ty.inner().into(), ty.src_ref())),
         }
     }
 }
@@ -43,11 +46,11 @@ impl<'a, 'b> From<&'b ast::Expr<'a>> for Expr<'a> {
             ast::Expr::Binary(op, a, b) => Expr::Binary(op.into(), a.into(), b.into()),
             ast::Expr::Ternary(op, a, b, c) => Expr::Ternary(op.into(), a.into(), b.into(), c.into()),
             ast::Expr::Bind(pat, expr, body) => {
-                let pat = IrNode::new((&pat.inner().0).into(), Type::from(&pat.inner().1).into(), pat.src_ref());
+                let pat = IrNode::new((&pat.inner().0).into(), TypeInfo::new((&pat.inner().1).into(), pat.src_ref()), pat.src_ref());
                 Expr::Bind(pat, expr.into(), body.into())
             },
             ast::Expr::Func(pat, body) => {
-                let pat = IrNode::new((&pat.inner().0).into(), Type::from(&pat.inner().1).into(), pat.src_ref());
+                let pat = IrNode::new((&pat.inner().0).into(), TypeInfo::new((&pat.inner().1).into(), pat.src_ref()), pat.src_ref());
                 Expr::Func(pat, body.into())
             },
             ast::Expr::Call(expr, a) => Expr::Call(expr.into(), a.into()),

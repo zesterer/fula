@@ -15,6 +15,17 @@ impl SrcLoc {
     pub fn max(self, other: Self) -> Self {
         Self(self.0.max(other.0))
     }
+
+    pub fn in_context(&self, code: &str) -> (usize, usize) {
+        let mut pos = self.0;
+        for (i, line) in code.lines().enumerate() {
+            if pos < line.len() {
+                return (i, pos);
+            }
+            pos -= line.len() + 1;
+        }
+        (code.lines().count(), 0)
+    }
 }
 
 impl fmt::Debug for SrcLoc {
@@ -33,8 +44,6 @@ impl From<usize> for SrcLoc {
 pub enum SrcRef {
     None,
     Range(SrcLoc, SrcLoc),
-    From(SrcLoc),
-    Until(SrcLoc),
 }
 
 impl SrcRef {
@@ -56,14 +65,21 @@ impl SrcRef {
             (_, SrcRef::None) => SrcRef::None,
             (SrcRef::Range(from_a, until_a), SrcRef::Range(from_b, until_b)) =>
                 SrcRef::Range(from_a.min(from_b), until_a.max(until_b)),
-            (SrcRef::Range(from_a, _), SrcRef::From(from_b)) => SrcRef::From(from_a.min(from_b)),
-            (SrcRef::From(from_a), SrcRef::Range(from_b, _)) => SrcRef::From(from_a.min(from_b)),
-            (SrcRef::Range(_, until_a), SrcRef::Until(until_b)) => SrcRef::Until(until_a.max(until_b)),
-            (SrcRef::Until(until_a), SrcRef::Range(_, until_b)) => SrcRef::Until(until_a.max(until_b)),
-            (SrcRef::From(from_a), SrcRef::From(from_b)) => SrcRef::From(from_a.min(from_b)),
-            (SrcRef::Until(until_a), SrcRef::Until(until_b)) => SrcRef::Until(until_a.max(until_b)),
-            (SrcRef::From(from_a), SrcRef::Until(until_b)) => SrcRef::range(from_a, until_b),
-            (SrcRef::Until(until_a), SrcRef::From(from_b)) => SrcRef::range(from_b, until_a),
+        }
+    }
+
+    pub fn homogenize(self, other: Self) -> Self {
+        match (self, other) {
+            (SrcRef::None, other) => other,
+            (this, SrcRef::None) => this,
+            (this, _) => this,
+        }
+    }
+
+    pub fn in_context(&self, code: &str) -> Option<((usize, usize), (usize, usize))> {
+        match self {
+            SrcRef::Range(from, until) => Some((from.in_context(code), until.in_context(code))),
+            SrcRef::None => None,
         }
     }
 }
@@ -73,8 +89,6 @@ impl fmt::Debug for SrcRef {
         match self {
             SrcRef::None => write!(f, "<none>"),
             SrcRef::Range(from, to) => write!(f, "{:?}:{:?}", from, to),
-            SrcRef::From(from) => write!(f, "{:?}:", from),
-            SrcRef::Until(until) => write!(f, ":{:?}", until),
         }
     }
 }

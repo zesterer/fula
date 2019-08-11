@@ -22,6 +22,19 @@ pub enum HirError<'a> {
     TypeMismatch(SrcRef, Type<'a>, SrcRef, Type<'a>),
     InvalidBinary(SrcRef, BinaryOp, Type<'a>, Type<'a>),
     InvalidUnary(SrcRef, UnaryOp, Type<'a>),
+    CannotFindIdent(SrcRef, &'a str),
+}
+
+impl<'a> HirError<'a> {
+    pub fn get_src_refs(&self) -> Vec<SrcRef> {
+        match self {
+            HirError::ExpectedType(r, _, _) => vec![*r],
+            HirError::TypeMismatch(r0, _, r1, _) => vec![*r0, *r1],
+            HirError::InvalidBinary(r, _, _, _) => vec![*r],
+            HirError::InvalidUnary(r, _, _) => vec![*r],
+            HirError::CannotFindIdent(r, _) => vec![*r],
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -38,6 +51,7 @@ pub enum Decl<'a> {
 #[derive(Clone)]
 pub struct TypeInfo<'a> {
     ty: Rc<RefCell<Type<'a>>>,
+    src_ref: SrcRef,
 }
 
 #[derive(Clone, Debug)]
@@ -168,8 +182,15 @@ impl<'a, 'b> From<&'b ast::Ast<'a>> for Program<'a> {
 }
 
 impl<'a> TypeInfo<'a> {
+    pub fn new(ty: Type<'a>, src_ref: SrcRef) -> Self {
+        Self {
+            ty: Rc::new(RefCell::new(ty)),
+            src_ref,
+        }
+    }
+
     pub fn unknown() -> Self {
-        Self::from(Type::Unknown)
+        Self::new(Type::Unknown, SrcRef::None)
     }
 }
 
@@ -179,14 +200,6 @@ impl<'a> fmt::Debug for TypeInfo<'a> {
             write!(f, "{:#?}", &self.ty.borrow())
         } else {
             write!(f, "{:?}", &self.ty.borrow())
-        }
-    }
-}
-
-impl<'a> From<Type<'a>> for TypeInfo<'a> {
-    fn from(ty: Type<'a>) -> Self {
-        Self {
-            ty: Rc::new(RefCell::new(ty)),
         }
     }
 }

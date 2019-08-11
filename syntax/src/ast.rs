@@ -167,10 +167,12 @@ impl<'a> Expr<'a> {
         mut args: VecDeque<AstNode<Expr<'a>>>,
     ) -> AstNode<Self> {
         let a = a.into();
-        let r = a.src_ref();
 
         match args.pop_front() {
-            Some(expr) => AstNode(Expr::Call(Expr::call(a, args), expr).into(), r),
+            Some(expr) => {
+                let r = expr.src_ref();
+                AstNode(Expr::Call(Expr::call(a, args), expr).into(), r)
+            },
             None => a,
         }
     }
