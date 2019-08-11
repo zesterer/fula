@@ -114,9 +114,9 @@ impl BinaryOp {
 
         if match (
             self,
-            val_type_info.ty.borrow_mut().known_or(&Type::List(TypeInfo::unknown())),
-            a.type_info.ty.borrow_mut().known_or(&Type::List(TypeInfo::unknown())),
-            b.type_info.ty.borrow_mut().known_or(&Type::List(TypeInfo::unknown())),
+            val_type_info.ty.borrow_mut().known_or(&Type::List(TypeInfo::unknown(val_type_info.src_ref))),
+            a.type_info.ty.borrow_mut().known_or(&Type::List(TypeInfo::unknown(a.type_info.src_ref))),
+            b.type_info.ty.borrow_mut().known_or(&Type::List(TypeInfo::unknown(b.type_info.src_ref))),
         ) {
             (BinaryOp::Eq, Type::List(_), Type::List(_), Type::List(_)) => true,
             (BinaryOp::NotEq, Type::List(_), Type::List(_), Type::List(_)) => true,
@@ -289,7 +289,7 @@ impl<'a> IrNode<'a, Expr<'a>> {
             Expr::Call(func, a) => {
                 func.infer_types(scope)?;
                 a.infer_types(scope)?;
-                func.type_info.homogenize(&mut TypeInfo::new(Type::Func(a.type_info.clone(), TypeInfo::unknown()), func.src_ref))?;
+                func.type_info.homogenize(&mut TypeInfo::new(Type::Func(a.type_info.clone(), TypeInfo::unknown(self.src_ref)), func.src_ref))?;
                 if let Type::Func(a_ty, body_ty) = &mut func.type_info.ty.borrow_mut().deref_mut() {
                     a.type_info.homogenize(a_ty)?;
                     self.type_info.homogenize(body_ty)?;
@@ -299,10 +299,10 @@ impl<'a> IrNode<'a, Expr<'a>> {
             },
             Expr::Func(pat, body) => {
                 let scope = match pat.inner.deref() {
-                    Pattern::Ident(name) => scope.with(name, TypeInfo::new(Type::Unknown, pat.src_ref)),
+                    Pattern::Ident(name) => scope.with(name, TypeInfo::unknown(pat.src_ref)),
                 };
                 body.infer_types(&scope)?;
-                self.type_info.homogenize(&mut TypeInfo::new(Type::Func(TypeInfo::unknown(), body.type_info.clone()), self.src_ref))?;
+                self.type_info.homogenize(&mut TypeInfo::new(Type::Func(TypeInfo::unknown(pat.src_ref), body.type_info.clone()), self.src_ref))?;
                 if let Type::Func(_, body_ty) = &mut self.type_info.ty.borrow_mut().deref_mut() {
                     body.type_info.homogenize(body_ty)?;
                 } else {
@@ -315,7 +315,7 @@ impl<'a> IrNode<'a, Expr<'a>> {
                     .map(|e| e.infer_types(scope))
                     .collect::<Result<(), _>>()?;
 
-                let mut list_type = TypeInfo::new(Type::List(elements.first_mut().map(|e| e.type_info.clone()).unwrap_or(TypeInfo::unknown())), self.src_ref);
+                let mut list_type = TypeInfo::new(Type::List(elements.first_mut().map(|e| e.type_info.clone()).unwrap_or(TypeInfo::unknown(self.src_ref))), self.src_ref);
                 // Homogenize the list type with the inner type
                 self.type_info.homogenize(&mut list_type)?;
                 // Homogenize the inner types with the list type

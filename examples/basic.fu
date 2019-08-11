@@ -1,8 +1,8 @@
 const x = [];
 const y = [];
 const z = [];
-const a = [];
-const b = [];
+const a: [Int] = [];
+const b: [Int] = [];
 
 const nn: Bool =
 	let nnn = false;

@@ -7,6 +7,7 @@ use std::{
     rc::Rc,
     cell::RefCell,
     fmt,
+    ops::Deref,
 };
 use self::node::IrNode;
 
@@ -20,6 +21,7 @@ use crate::CompileError;
 pub enum HirError<'a> {
     ExpectedType(SrcRef, Type<'a>, Type<'a>),
     TypeMismatch(SrcRef, Type<'a>, SrcRef, Type<'a>),
+    TypeAmbiguity(SrcRef),
     InvalidBinary(SrcRef, BinaryOp, Type<'a>, Type<'a>),
     InvalidUnary(SrcRef, UnaryOp, Type<'a>),
     CannotFindIdent(SrcRef, &'a str),
@@ -30,6 +32,7 @@ impl<'a> HirError<'a> {
         match self {
             HirError::ExpectedType(r, _, _) => vec![*r],
             HirError::TypeMismatch(r0, _, r1, _) => vec![*r0, *r1],
+            HirError::TypeAmbiguity(r) => vec![*r],
             HirError::InvalidBinary(r, _, _, _) => vec![*r],
             HirError::InvalidUnary(r, _, _) => vec![*r],
             HirError::CannotFindIdent(r, _) => vec![*r],
@@ -146,6 +149,27 @@ impl<'a> Program<'a> {
         self.decls.iter_mut()
     }
 
+    fn get_type_ambiguities(&self) -> Vec<HirError<'a>> {
+        let mut errors = Vec::new();
+
+        let mut visitor = |type_info: &TypeInfo| match type_info.ty.borrow().deref() {
+            Type::Unknown => Err(HirError::TypeAmbiguity(type_info.src_ref)),
+            _ => Ok(()),
+        };
+
+        for decl in self.declarations() {
+            match decl {
+                Decl::Const(_, val) => match val.type_info.visit_type_info(&mut visitor) {
+                    Ok(()) => {},
+                    Err(err) => errors.push(err),
+                },
+                Decl::Data(_, _) => unimplemented!(),
+            }
+        }
+
+        errors
+    }
+
     pub fn compile(&mut self) -> Result<(), Vec<CompileError<'a>>> {
         match self.infer_types() {
             errors if errors.len() > 0 => return Err(errors
@@ -155,7 +179,6 @@ impl<'a> Program<'a> {
             _ => {},
         }
 
-        /*
         match self.get_type_ambiguities() {
             errors if errors.len() > 0 => return Err(errors
                 .into_iter()
@@ -163,7 +186,6 @@ impl<'a> Program<'a> {
                 .collect()),
             _ => {},
         }
-        */
 
         Ok(())
     }
@@ -189,8 +211,8 @@ impl<'a> TypeInfo<'a> {
         }
     }
 
-    pub fn unknown() -> Self {
-        Self::new(Type::Unknown, SrcRef::None)
+    pub fn unknown(r: SrcRef) -> Self {
+        Self::new(Type::Unknown, r)
     }
 }
 
