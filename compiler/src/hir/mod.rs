@@ -3,6 +3,11 @@ mod node;
 mod visit;
 mod infer;
 
+use std::{
+    rc::Rc,
+    cell::RefCell,
+    fmt,
+};
 use self::node::IrNode;
 
 use fula_syntax::{
@@ -13,10 +18,10 @@ use crate::CompileError;
 
 #[derive(Debug)]
 pub enum HirError<'a> {
-    ExpectedType(SrcRef, TypeInfo<'a>, TypeInfo<'a>),
-    TypeMismatch(SrcRef, TypeInfo<'a>, SrcRef, TypeInfo<'a>),
-    InvalidBinary(SrcRef, BinaryOp, TypeInfo<'a>, TypeInfo<'a>),
-    InvalidUnary(SrcRef, UnaryOp, TypeInfo<'a>),
+    ExpectedType(SrcRef, Type<'a>, Type<'a>),
+    TypeMismatch(SrcRef, Type<'a>, SrcRef, Type<'a>),
+    InvalidBinary(SrcRef, BinaryOp, Type<'a>, Type<'a>),
+    InvalidUnary(SrcRef, UnaryOp, Type<'a>),
 }
 
 #[derive(Debug)]
@@ -30,12 +35,17 @@ pub enum Decl<'a> {
     Data(&'a str, TypeInfo<'a>),
 }
 
+#[derive(Clone)]
+pub struct TypeInfo<'a> {
+    ty: Rc<RefCell<Type<'a>>>,
+}
+
 #[derive(Clone, Debug)]
-pub enum TypeInfo<'a> {
+pub enum Type<'a> {
     Unknown,
     Primitive(PrimitiveType),
-    Func(Box<Self>, Box<Self>),
-    List(Box<Self>),
+    Func(TypeInfo<'a>, TypeInfo<'a>),
+    List(TypeInfo<'a>),
     Named(&'a str),
 }
 
@@ -154,5 +164,29 @@ impl<'a, 'b> From<&'b ast::Ast<'a>> for Program<'a> {
         }
 
         this
+    }
+}
+
+impl<'a> TypeInfo<'a> {
+    pub fn unknown() -> Self {
+        Self::from(Type::Unknown)
+    }
+}
+
+impl<'a> fmt::Debug for TypeInfo<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if f.alternate() {
+            write!(f, "{:#?}", &self.ty.borrow())
+        } else {
+            write!(f, "{:?}", &self.ty.borrow())
+        }
+    }
+}
+
+impl<'a> From<Type<'a>> for TypeInfo<'a> {
+    fn from(ty: Type<'a>) -> Self {
+        Self {
+            ty: Rc::new(RefCell::new(ty)),
+        }
     }
 }

@@ -1,37 +1,54 @@
+use std::ops::{Deref, DerefMut};
 use super::*;
 
 impl Value {
-    pub fn get_type_info<'a>(&self) -> TypeInfo<'a> {
+    pub fn get_type<'a>(&self) -> Type<'a> {
         match self {
-            Value::Bool(_) => TypeInfo::Primitive(PrimitiveType::Bool),
-            Value::Int(_) => TypeInfo::Primitive(PrimitiveType::Int),
-            Value::Float(_) => TypeInfo::Primitive(PrimitiveType::Float),
-            Value::String(_) => TypeInfo::Primitive(PrimitiveType::String),
+            Value::Bool(_) => Type::Primitive(PrimitiveType::Bool),
+            Value::Int(_) => Type::Primitive(PrimitiveType::Int),
+            Value::Float(_) => Type::Primitive(PrimitiveType::Float),
+            Value::String(_) => Type::Primitive(PrimitiveType::String),
         }
     }
 }
 
-impl<'a> TypeInfo<'a> {
-    pub fn homogenize(&mut self, r0: SrcRef, other: &mut TypeInfo<'a>, r1: SrcRef) -> Result<(), HirError<'a>> {
+impl<'a> Type<'a> {
+    pub fn homogenize(&mut self, r0: SrcRef, other: &mut Type<'a>, r1: SrcRef) -> Result<(), HirError<'a>> {
         match (self, other) {
-            (this @ TypeInfo::Unknown, other) => *this = other.clone(),
-            (this, other @ TypeInfo::Unknown) => *other = this.clone(),
-            (TypeInfo::Func(a, b), TypeInfo::Func(c, d)) => {
-                a.homogenize(r0, c.as_mut(), r1)?;
-                b.homogenize(r0, d.as_mut(), r1)?;
+            (this @ Type::Unknown, other) => *this = other.clone(),
+            (this, other @ Type::Unknown) => *other = this.clone(),
+            (Type::Func(a, b), Type::Func(c, d)) => {
+                a.homogenize(r0, c, r1)?;
+                b.homogenize(r0, d, r1)?;
             },
-            (TypeInfo::List(a), TypeInfo::List(b)) => {
-                a.homogenize(r0, b.as_mut(), r1)?;
+            (Type::List(a), Type::List(b)) => {
+                a.homogenize(r0, b, r1)?;
             },
-            (TypeInfo::Primitive(a), TypeInfo::Primitive(b)) if a == b => {},
+            (Type::Primitive(a), Type::Primitive(b)) if a == b => {},
             (this, other) => return Err(HirError::TypeMismatch(r0, this.clone(), r1, other.clone())),
         }
         Ok(())
     }
 }
 
+impl<'a> TypeInfo<'a> {
+    pub fn homogenize(&mut self, r0: SrcRef, other: &mut TypeInfo<'a>, r1: SrcRef) -> Result<(), HirError<'a>> {
+        if Rc::ptr_eq(&self.ty, &other.ty) {
+            Ok(())
+        } else {
+            self.ty.borrow_mut().homogenize(r0, &mut other.ty.borrow_mut(), r1)?;
+            self.ty = other.ty.clone();
+            Ok(())
+        }
+    }
+}
+
 impl UnaryOp {
-    fn homogenize<'a>(&self, val_ty: &mut TypeInfo<'a>, r: SrcRef, a: &mut IrNode<'a, Expr<'a>>) -> Result<(), HirError<'a>> {
+    fn homogenize<'a>(&self, val_type_info: &mut TypeInfo<'a>, r: SrcRef, a: &mut IrNode<'a, Expr<'a>>) -> Result<(), HirError<'a>> {
+        if Rc::ptr_eq(&val_type_info.ty, &a.type_info.ty) {
+            return Ok(());
+        }
+
         let ops = [
             (UnaryOp::Neg, PrimitiveType::Int, (PrimitiveType::Int,)),
             (UnaryOp::Neg, PrimitiveType::Float, (PrimitiveType::Float,)),
@@ -41,29 +58,29 @@ impl UnaryOp {
 
         for (op, ret, (x,)) in &ops {
             if self == op {
-                match &a.ty {
-                    TypeInfo::Primitive(a) if a == x => {}
-                    TypeInfo::Unknown => {}
-                    a => match (&val_ty, a) {
-                        (TypeInfo::Unknown, TypeInfo::Unknown) => return Ok(()),
-                        (TypeInfo::Primitive(val_ty), TypeInfo::Unknown) if val_ty == ret => {},
+                match a.type_info.ty.borrow().deref() {
+                    Type::Primitive(a) if a == x => {}
+                    Type::Unknown => {}
+                    a => match (val_type_info.ty.borrow().deref(), a) {
+                        (Type::Unknown, Type::Unknown) => return Ok(()),
+                        (Type::Primitive(val_ty), Type::Unknown) if val_ty == ret => {},
                         _ => continue,
                     },
                 }
 
-                a.ty.homogenize(a.src_ref, &mut TypeInfo::Primitive(x.clone()), r)?;
-                val_ty.homogenize(r, &mut TypeInfo::Primitive(ret.clone()), r)?;
+                a.type_info.homogenize(a.src_ref, &mut TypeInfo::from(Type::Primitive(x.clone())), r)?;
+                val_type_info.homogenize(r, &mut TypeInfo::from(Type::Primitive(ret.clone())), r)?;
 
                 return Ok(());
             }
         }
 
-        return Err(HirError::InvalidUnary(r, self.clone(), a.ty.clone()));
+        return Err(HirError::InvalidUnary(r, self.clone(), a.type_info.ty.borrow().clone()));
     }
 }
 
 impl BinaryOp {
-    fn homogenize<'a>(&self, val_ty: &mut TypeInfo<'a>, r: SrcRef, a: &mut IrNode<'a, Expr<'a>>, b: &mut IrNode<'a, Expr<'a>>) -> Result<(), HirError<'a>> {
+    fn homogenize<'a>(&self, val_type_info: &mut TypeInfo<'a>, r: SrcRef, a: &mut IrNode<'a, Expr<'a>>, b: &mut IrNode<'a, Expr<'a>>) -> Result<(), HirError<'a>> {
         let ops = [
             (BinaryOp::Add, PrimitiveType::Int, (PrimitiveType::Int, PrimitiveType::Int)),
             (BinaryOp::Add, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
@@ -99,33 +116,33 @@ impl BinaryOp {
 
         for (op, ret, (x, y)) in &ops {
             if self == op {
-                match (&a.ty, &b.ty) {
-                    (TypeInfo::Primitive(a), TypeInfo::Unknown) if a == x => {}
-                    (TypeInfo::Unknown, TypeInfo::Primitive(b)) if b == y => {}
-                    (TypeInfo::Primitive(a), TypeInfo::Primitive(b)) if a == x && b == y => {},
-                    (a, b) => match (&val_ty, a, b) {
-                        (TypeInfo::Unknown, TypeInfo::Unknown, TypeInfo::Unknown) => return Ok(()),
-                        (TypeInfo::Primitive(val_ty), TypeInfo::Unknown, TypeInfo::Unknown) if val_ty == ret => {},
+                match (a.type_info.ty.borrow().deref(), b.type_info.ty.borrow().deref()) {
+                    (Type::Primitive(a), Type::Unknown) if a == x => {}
+                    (Type::Unknown, Type::Primitive(b)) if b == y => {}
+                    (Type::Primitive(a), Type::Primitive(b)) if a == x && b == y => {},
+                    (a, b) => match (val_type_info.ty.borrow().deref(), a, b) {
+                        (Type::Unknown, Type::Unknown, Type::Unknown) => return Ok(()),
+                        (Type::Primitive(val_ty), Type::Unknown, Type::Unknown) if val_ty == ret => {},
                         _ => continue,
                     },
                 }
 
-                a.ty.homogenize(a.src_ref, &mut TypeInfo::Primitive(x.clone()), r)?;
-                b.ty.homogenize(b.src_ref, &mut TypeInfo::Primitive(y.clone()), r)?;
-                val_ty.homogenize(r, &mut TypeInfo::Primitive(ret.clone()), r)?;
+                a.type_info.homogenize(a.src_ref, &mut TypeInfo::from(Type::Primitive(x.clone())), r)?;
+                b.type_info.homogenize(b.src_ref, &mut TypeInfo::from(Type::Primitive(y.clone())), r)?;
+                val_type_info.homogenize(r, &mut TypeInfo::from(Type::Primitive(ret.clone())), r)?;
 
                 return Ok(());
             }
         }
 
-        return Err(HirError::InvalidBinary(r, self.clone(), a.ty.clone(), b.ty.clone()));
+        return Err(HirError::InvalidBinary(r, self.clone(), a.type_info.ty.borrow().clone(), b.type_info.ty.borrow().clone()));
     }
 }
 
 impl TernaryOp {
     fn homogenize<'a>(
         &self,
-        val_ty: &mut TypeInfo<'a>,
+        val_type_info: &mut TypeInfo<'a>,
         r: SrcRef,
         a: &mut IrNode<'a, Expr<'a>>,
         b: &mut IrNode<'a, Expr<'a>>,
@@ -133,15 +150,15 @@ impl TernaryOp {
     ) -> Result<(), HirError<'a>> {
         match self {
             TernaryOp::IfElse => {
-                match &a.ty {
-                    TypeInfo::Unknown => {},
-                    TypeInfo::Primitive(PrimitiveType::Bool) => {},
-                    a_ty => return Err(HirError::ExpectedType(a.src_ref, a_ty.clone(), TypeInfo::Primitive(PrimitiveType::Bool))),
+                match a.type_info.ty.borrow().deref() {
+                    Type::Unknown => {},
+                    Type::Primitive(PrimitiveType::Bool) => {},
+                    a_ty => return Err(HirError::ExpectedType(a.src_ref, a_ty.clone(), Type::Primitive(PrimitiveType::Bool))),
                 }
 
-                a.ty.homogenize(a.src_ref, &mut TypeInfo::Primitive(PrimitiveType::Bool), r)?;
-                c.ty.homogenize(c.src_ref, &mut b.ty, b.src_ref)?;
-                val_ty.homogenize(r, &mut b.ty, r)?;
+                a.type_info.homogenize(a.src_ref, &mut TypeInfo::from(Type::Primitive(PrimitiveType::Bool)), r)?;
+                c.type_info.homogenize(c.src_ref, &mut b.type_info, b.src_ref)?;
+                val_type_info.homogenize(r, &mut b.type_info, r)?;
                 Ok(())
             },
         }
@@ -151,28 +168,22 @@ impl TernaryOp {
 impl<'a> IrNode<'a, Expr<'a>> {
     pub fn infer_types(&mut self) -> Result<(), HirError<'a>> {
         match self.inner.as_mut() {
-            Expr::Value(val) => self.ty.homogenize(self.src_ref, &mut val.get_type_info(), self.src_ref)?,
+            Expr::Value(val) => self.type_info.ty.borrow_mut().homogenize(self.src_ref, &mut val.get_type(), self.src_ref)?,
             Expr::Ident(_) => {},
             Expr::Unary(op, a) => {
                 a.infer_types()?;
-                op.homogenize(&mut self.ty, self.src_ref, a)?;
-                a.infer_types()?;
+                op.homogenize(&mut self.type_info, self.src_ref, a)?;
             },
             Expr::Binary(op, a, b) => {
                 a.infer_types()?;
                 b.infer_types()?;
-                op.homogenize(&mut self.ty, self.src_ref, a, b)?;
-                a.infer_types()?;
-                b.infer_types()?;
+                op.homogenize(&mut self.type_info, self.src_ref, a, b)?;
             },
             Expr::Ternary(op, a, b, c) => {
                 a.infer_types()?;
                 b.infer_types()?;
                 c.infer_types()?;
-                op.homogenize(&mut self.ty, self.src_ref, a, b, c)?;
-                a.infer_types()?;
-                b.infer_types()?;
-                c.infer_types()?;
+                op.homogenize(&mut self.type_info, self.src_ref, a, b, c)?;
             },
             Expr::Bind(_, val, body) => {
                 val.infer_types()?;
@@ -181,25 +192,22 @@ impl<'a> IrNode<'a, Expr<'a>> {
             Expr::Call(func, a) => {
                 func.infer_types()?;
                 a.infer_types()?;
-                func.ty.homogenize(self.src_ref, &mut TypeInfo::Func(TypeInfo::Unknown.into(), a.ty.clone().into()), self.src_ref)?;
-                if let TypeInfo::Func(a_ty, body_ty) = &mut func.ty {
-                    a.ty.homogenize(a.src_ref, a_ty, a.src_ref)?;
-                    self.ty.homogenize(self.src_ref, body_ty, func.src_ref)?;
+                func.type_info.homogenize(self.src_ref, &mut TypeInfo::from(Type::Func(TypeInfo::unknown(), a.type_info.clone())), self.src_ref)?;
+                if let Type::Func(a_ty, body_ty) = &mut func.type_info.ty.borrow_mut().deref_mut() {
+                    a.type_info.homogenize(a.src_ref, a_ty, a.src_ref)?;
+                    self.type_info.homogenize(self.src_ref, body_ty, func.src_ref)?;
                 } else {
                     panic!();
                 }
-                func.infer_types()?;
-                a.infer_types()?;
             },
             Expr::Func(_, body) => {
                 body.infer_types()?;
-                self.ty.homogenize(self.src_ref, &mut TypeInfo::Func(TypeInfo::Unknown.into(), body.ty.clone().into()), self.src_ref)?;
-                if let TypeInfo::Func(_, body_ty) = &mut self.ty {
-                    body.ty.homogenize(body.src_ref, body_ty, body.src_ref)?;
+                self.type_info.homogenize(self.src_ref, &mut TypeInfo::from(Type::Func(TypeInfo::unknown(), body.type_info.clone())), self.src_ref)?;
+                if let Type::Func(_, body_ty) = &mut self.type_info.ty.borrow_mut().deref_mut() {
+                    body.type_info.homogenize(body.src_ref, body_ty, body.src_ref)?;
                 } else {
                     panic!();
                 }
-                body.infer_types()?;
             },
             Expr::List(elements) => {
                 elements
@@ -207,33 +215,20 @@ impl<'a> IrNode<'a, Expr<'a>> {
                     .map(|e| e.infer_types())
                     .collect::<Result<(), _>>()?;
 
-                // Homogenize each element with its rightward neighbour (i.e: ensure they're all the same type)
-                for i in 1..elements.len() {
-                    let (a, b) = elements.split_at_mut(i);
-                    let (a, b) = (a.last_mut().unwrap(), b.first_mut().unwrap());
-                    a.ty.homogenize(a.src_ref, &mut b.ty, b.src_ref)?;
-                }
-                let mut list_type = TypeInfo::List(elements.first_mut().map(|e| e.ty.clone()).unwrap_or(TypeInfo::Unknown).into());
+                let mut list_type = TypeInfo::from(Type::List(elements.first_mut().map(|e| e.type_info.clone()).unwrap_or(TypeInfo::unknown())));
                 // Homogenize the list type with the inner type
-                self.ty.homogenize(self.src_ref, &mut list_type, self.src_ref)?;
+                self.type_info.homogenize(self.src_ref, &mut list_type, self.src_ref)?;
                 // Homogenize the inner types with the list type
                 let r = self.src_ref;
-                if let TypeInfo::List(inner_ty) = &mut list_type {
+                if let Type::List(inner_ty) = list_type.ty.borrow_mut().deref_mut() {
                     elements
                         .iter_mut()
                         .rev()
-                        .map(|e| e.ty.homogenize(e.src_ref, inner_ty, r))
+                        .map(|e| e.type_info.homogenize(e.src_ref, inner_ty, r))
                         .collect::<Result<(), _>>()?;
                 } else {
                     panic!();
-                }
-                // Homogenize the list type again
-                self.ty.homogenize(self.src_ref, &mut list_type, self.src_ref)?;
-
-                elements
-                    .iter_mut()
-                    .map(|e| e.infer_types())
-                    .collect::<Result<(), _>>()?;
+                };
             },
         }
 

@@ -4,24 +4,24 @@ impl<'a, 'b> From<&'b ast::Decl<'a>> for Decl<'a> {
     fn from(decl: &'b ast::Decl<'a>) -> Self {
         match decl {
             ast::Decl::Const(name, ty, expr) =>
-                Decl::Const(name, IrNode::new(expr.inner().into(), ty.inner().into(), expr.src_ref())),
-            ast::Decl::Data(ident, ty) => Decl::Data(ident, ty.inner().into()),
+                Decl::Const(name, IrNode::new(expr.inner().into(), Type::from(ty.inner()).into(), expr.src_ref())),
+            ast::Decl::Data(ident, ty) => Decl::Data(ident, Type::from(ty.inner()).into()),
         }
     }
 }
 
-impl<'a, 'b> From<&'b ast::Type<'a>> for TypeInfo<'a> {
+impl<'a, 'b> From<&'b ast::Type<'a>> for Type<'a> {
     fn from(ty: &'b ast::Type<'a>) -> Self {
         match ty {
-            ast::Type::Unspecified => TypeInfo::Unknown,
-            ast::Type::Universe => TypeInfo::Primitive(PrimitiveType::Universe),
-            ast::Type::Ident("Bool") => TypeInfo::Primitive(PrimitiveType::Bool),
-            ast::Type::Ident("Int") => TypeInfo::Primitive(PrimitiveType::Int),
-            ast::Type::Ident("Float") => TypeInfo::Primitive(PrimitiveType::Float),
-            ast::Type::Ident("String") => TypeInfo::Primitive(PrimitiveType::String),
-            ast::Type::Ident(ident) => TypeInfo::Named(ident),
-            ast::Type::Func(param, ret) => TypeInfo::Func(Box::new(param.inner().into()), Box::new(ret.inner().into())),
-            ast::Type::List(ty) => TypeInfo::List(Box::new(ty.inner().into())),
+            ast::Type::Unspecified => Type::Unknown,
+            ast::Type::Universe => Type::Primitive(PrimitiveType::Universe),
+            ast::Type::Ident("Bool") => Type::Primitive(PrimitiveType::Bool),
+            ast::Type::Ident("Int") => Type::Primitive(PrimitiveType::Int),
+            ast::Type::Ident("Float") => Type::Primitive(PrimitiveType::Float),
+            ast::Type::Ident("String") => Type::Primitive(PrimitiveType::String),
+            ast::Type::Ident(ident) => Type::Named(ident),
+            ast::Type::Func(param, ret) => Type::Func(Type::from(param.inner()).into(), Type::from(ret.inner()).into()),
+            ast::Type::List(ty) => Type::List(Type::from(ty.inner()).into()),
         }
     }
 }
@@ -43,11 +43,11 @@ impl<'a, 'b> From<&'b ast::Expr<'a>> for Expr<'a> {
             ast::Expr::Binary(op, a, b) => Expr::Binary(op.into(), a.into(), b.into()),
             ast::Expr::Ternary(op, a, b, c) => Expr::Ternary(op.into(), a.into(), b.into(), c.into()),
             ast::Expr::Bind(pat, expr, body) => {
-                let pat = IrNode::new((&pat.inner().0).into(), (&pat.inner().1).into(), pat.src_ref());
+                let pat = IrNode::new((&pat.inner().0).into(), Type::from(&pat.inner().1).into(), pat.src_ref());
                 Expr::Bind(pat, expr.into(), body.into())
             },
             ast::Expr::Func(pat, body) => {
-                let pat = IrNode::new((&pat.inner().0).into(), (&pat.inner().1).into(), pat.src_ref());
+                let pat = IrNode::new((&pat.inner().0).into(), Type::from(&pat.inner().1).into(), pat.src_ref());
                 Expr::Func(pat, body.into())
             },
             ast::Expr::Call(expr, a) => Expr::Call(expr.into(), a.into()),
@@ -63,17 +63,6 @@ impl<'a> From<&'a ast::Literal> for Value {
             ast::Literal::Int(x) => Value::Int(*x),
             ast::Literal::Float(x) => Value::Float(*x),
             ast::Literal::String(x) => Value::String(x.clone()),
-        }
-    }
-}
-
-impl Value {
-    pub fn type_info<'a>(&self) -> TypeInfo<'a> {
-        match self {
-            Value::Bool(_) => TypeInfo::Primitive(PrimitiveType::Bool),
-            Value::Int(_) => TypeInfo::Primitive(PrimitiveType::Int),
-            Value::Float(_) => TypeInfo::Primitive(PrimitiveType::Float),
-            Value::String(_) => TypeInfo::Primitive(PrimitiveType::String),
         }
     }
 }

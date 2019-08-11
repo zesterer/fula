@@ -1,5 +1,5 @@
 # Inferred to [Int]
-const my_list: [_] = [x, y, z, 3];
+const my_list: [_] = [x, y, z, [a, b, 3]];
 
 # Inferred to Int
 const five = (|x| 5)(0);
