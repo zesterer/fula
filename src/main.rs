@@ -50,9 +50,9 @@ fn main() {
             x + y;
 
         const fact_10: _ = factorial(10);
-
-        const main: _ = add(3, 4);
     "#;
+
+    let code = include_str!("../examples/basic.fu");
 
     let tokens = match lex(code) {
         Ok(tokens) => tokens,

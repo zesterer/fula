@@ -1,0 +1,4 @@
+const map: Int -> (Int -> Int) -> Int = |x, f|
+	f(x);
+
+const main: _ = map(1, |x| x + 1);

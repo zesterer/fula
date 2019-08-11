@@ -1,17 +1,16 @@
 #![feature(bind_by_move_pattern_guards)]
 
 pub mod hir;
-pub mod infer;
-
-use infer::TypeError;
+use hir::HirError;
+//pub mod infer;
 
 #[derive(Debug)]
 pub enum CompileError<'a> {
-    Type(TypeError<'a>),
+    Hir(HirError<'a>),
 }
 
-impl<'a> From<TypeError<'a>> for CompileError<'a> {
-    fn from(err: TypeError<'a>) -> Self {
-        CompileError::Type(err)
+impl<'a> From<HirError<'a>> for CompileError<'a> {
+    fn from(err: HirError<'a>) -> Self {
+        CompileError::Hir(err)
     }
 }

@@ -15,6 +15,10 @@ impl<T> AstNode<T> {
         &self.0
     }
 
+    pub fn into_inner(self) -> T {
+        *self.0
+    }
+
     pub fn src_ref(&self) -> SrcRef {
         self.1
     }
@@ -54,10 +58,10 @@ pub enum Expr<'a> {
     Unary(UnaryOp, AstNode<Self>),
     Binary(BinaryOp, AstNode<Self>, AstNode<Self>),
     Ternary(TernaryOp, AstNode<Self>, AstNode<Self>, AstNode<Self>),
-    Bind(AstNode<Pattern<'a>>, AstNode<Self>, AstNode<Self>),
-    Func(AstNode<Pattern<'a>>, AstNode<Self>),
+    Bind(AstNode<(Pattern<'a>, Type<'a>)>, AstNode<Self>, AstNode<Self>),
+    Func(AstNode<(Pattern<'a>, Type<'a>)>, AstNode<Self>),
     Call(AstNode<Self>, AstNode<Self>),
-    Cast(AstNode<Self>, AstNode<Type<'a>>),
+    List(Vec<AstNode<Self>>),
 }
 
 #[derive(Debug)]
@@ -71,6 +75,7 @@ pub enum Type<'a> {
     Universe,
     Ident(&'a str),
     Func(AstNode<Self>, AstNode<Self>),
+    List(AstNode<Self>),
 }
 
 impl<'a> Default for Type<'a> {
@@ -145,7 +150,7 @@ impl<'a> Expr<'a> {
     }
 
     pub fn func(
-        mut params: VecDeque<AstNode<Pattern<'a>>>,
+        mut params: VecDeque<AstNode<(Pattern<'a>, Type<'a>)>>,
         a: impl Into<AstNode<Expr<'a>>>,
     ) -> AstNode<Self> {
         let a = a.into();
@@ -168,6 +173,13 @@ impl<'a> Expr<'a> {
             Some(expr) => AstNode(Expr::Call(Expr::call(a, args), expr).into(), r),
             None => a,
         }
+    }
+
+    pub fn list(
+        elements: VecDeque<AstNode<Expr<'a>>>,
+        r: SrcRef,
+    ) -> AstNode<Self> {
+        AstNode(Expr::List(elements.into_iter().collect()).into(), r)
     }
 
     pub fn unary(
@@ -201,7 +213,7 @@ impl<'a> Expr<'a> {
     }
 
     pub fn bind(
-        pat: impl Into<AstNode<Pattern<'a>>>,
+        pat: impl Into<AstNode<(Pattern<'a>, Type<'a>)>>,
         a: impl Into<AstNode<Expr<'a>>>,
         b: impl Into<AstNode<Expr<'a>>>,
     ) -> AstNode<Self> {

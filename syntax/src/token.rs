@@ -42,6 +42,8 @@ pub enum Lexeme<'a> {
     Semicolon,
     LParen,
     RParen,
+    LBrack,
+    RBrack,
     Arrow,
     Universe,
 
@@ -130,6 +132,8 @@ impl<'a> TokenList<'a> {
                     ';' => tokens.push(Token(Lexeme::Semicolon, SrcRef::from(i))),
                     '(' => tokens.push(Token(Lexeme::LParen, SrcRef::from(i))),
                     ')' => tokens.push(Token(Lexeme::RParen, SrcRef::from(i))),
+                    '[' => tokens.push(Token(Lexeme::LBrack, SrcRef::from(i))),
+                    ']' => tokens.push(Token(Lexeme::RBrack, SrcRef::from(i))),
                     c if c.is_whitespace() => {},
                     c if c.is_alphabetic() || c == '_' => {
                         start = i;
@@ -139,7 +143,7 @@ impl<'a> TokenList<'a> {
                         start = i;
                         state = State::Number;
                     },
-                    c if c.is_ascii_punctuation() => {
+                    c if c.is_ascii_punctuation() && c != '_' => {
                         start = i;
                         state = State::Symbol;
                     },
@@ -185,7 +189,7 @@ impl<'a> TokenList<'a> {
                     },
                 },
                 State::Symbol => match c {
-                    c if c.is_ascii_punctuation() => {},
+                    c if c.is_ascii_punctuation() && c != '_' => {},
                     _ => {
                         let r = SrcRef::from((start, i));
                         match &code[start..i] {

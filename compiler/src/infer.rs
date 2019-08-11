@@ -28,6 +28,10 @@ impl<'a> TypeInfo<'a> {
     pub fn substitute(&mut self, ty: &TypeInfo<'a>) {
         match (self, ty) {
             (this @ TypeInfo::Unknown, ty) => *this = ty.clone(),
+            (TypeInfo::Func(a, b), TypeInfo::Func(c, d)) => {
+                a.substitute(c);
+                b.substitute(d);
+            },
             _ => {}, // TODO: Panic if this fails?
         }
     }
@@ -106,58 +110,56 @@ impl UnaryOp {
 
 impl BinaryOp {
     fn get_type_info<'a>(&self, ty: &TypeInfo<'a>, a: &TypeInfo<'a>, b: &TypeInfo<'a>, r: SrcRef) -> Result<(TypeInfo<'a>, [TypeInfo<'a>; 2]), TypeError<'a>> {
-        match (self, ty, a, b) {
-            (_, TypeInfo::Unknown, TypeInfo::Unknown, TypeInfo::Unknown) => Ok((TypeInfo::Unknown, [TypeInfo::Unknown, TypeInfo::Unknown])),
-            (BinaryOp::Add, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown, TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Add, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Add, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Add, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Add, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Add, TypeInfo::Unknown, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Add, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
+        let ops = [
+            (BinaryOp::Add, PrimitiveType::Int, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::Add, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
+            (BinaryOp::Sub, PrimitiveType::Int, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::Sub, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
+            (BinaryOp::Mul, PrimitiveType::Int, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::Mul, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
+            (BinaryOp::Div, PrimitiveType::Int, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::Div, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
+            (BinaryOp::Rem, PrimitiveType::Int, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::Rem, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
 
-            (BinaryOp::Add, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
-            (BinaryOp::Add, TypeInfo::Unknown, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float)) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
-            (BinaryOp::Add, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
+            (BinaryOp::And, PrimitiveType::Bool, (PrimitiveType::Bool, PrimitiveType::Bool)),
+            (BinaryOp::Or, PrimitiveType::Bool, (PrimitiveType::Bool, PrimitiveType::Bool)),
+            (BinaryOp::Xor, PrimitiveType::Bool, (PrimitiveType::Bool, PrimitiveType::Bool)),
 
-            (BinaryOp::Sub, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown, TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Sub, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Sub, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Sub, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Sub, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Sub, TypeInfo::Unknown, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Sub, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
+            (BinaryOp::Eq, PrimitiveType::Bool, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::Eq, PrimitiveType::Bool, (PrimitiveType::Float, PrimitiveType::Float)),
+            (BinaryOp::Eq, PrimitiveType::Bool, (PrimitiveType::Bool, PrimitiveType::Bool)),
+            (BinaryOp::NotEq, PrimitiveType::Bool, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::NotEq, PrimitiveType::Bool, (PrimitiveType::Float, PrimitiveType::Float)),
+            (BinaryOp::NotEq, PrimitiveType::Bool, (PrimitiveType::Bool, PrimitiveType::Bool)),
 
-            (BinaryOp::Sub, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
-            (BinaryOp::Sub, TypeInfo::Unknown, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float)) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
-            (BinaryOp::Sub, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
+            (BinaryOp::Less, PrimitiveType::Int, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::Less, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
+            (BinaryOp::LessEq, PrimitiveType::Int, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::LessEq, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
+            (BinaryOp::More, PrimitiveType::Int, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::More, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
+            (BinaryOp::MoreEq, PrimitiveType::Int, (PrimitiveType::Int, PrimitiveType::Int)),
+            (BinaryOp::MoreEq, PrimitiveType::Float, (PrimitiveType::Float, PrimitiveType::Float)),
+        ];
 
-            (BinaryOp::Mul, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown, TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Mul, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Mul, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Mul, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Mul, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Mul, TypeInfo::Unknown, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Mul, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Int), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
+        for (op, ret, (x, y)) in &ops {
+            if self == op {
+                match (a, b) {
+                    (TypeInfo::Primitive(a), TypeInfo::Unknown) if a == x => {}
+                    (TypeInfo::Unknown, TypeInfo::Primitive(b)) if b == y => {}
+                    (TypeInfo::Primitive(a), TypeInfo::Primitive(b)) if a == x && b == y => {},
+                    _ => match (ty, a, b) {
+                        (TypeInfo::Primitive(ty), TypeInfo::Unknown, TypeInfo::Unknown) if ty == ret => {},
+                        _ => continue,
+                    },
+                }
 
-            (BinaryOp::Mul, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
-            (BinaryOp::Mul, TypeInfo::Unknown, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float)) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
-            (BinaryOp::Mul, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
-
-            (BinaryOp::Eq, TypeInfo::Primitive(PrimitiveType::Bool), TypeInfo::Unknown, TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Bool), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Eq, TypeInfo::Primitive(PrimitiveType::Bool), TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Bool), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Eq, TypeInfo::Primitive(PrimitiveType::Bool), TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Bool), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Eq, TypeInfo::Primitive(PrimitiveType::Bool), TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Bool), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Eq, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Bool), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Eq, TypeInfo::Unknown, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int)) => Ok((TypeInfo::Primitive(PrimitiveType::Bool), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-            (BinaryOp::Eq, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Bool), [TypeInfo::Primitive(PrimitiveType::Int), TypeInfo::Primitive(PrimitiveType::Int)])),
-
-            (BinaryOp::Eq, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
-            (BinaryOp::Eq, TypeInfo::Unknown, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float)) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
-            (BinaryOp::Eq, TypeInfo::Unknown, TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Unknown) => Ok((TypeInfo::Primitive(PrimitiveType::Float), [TypeInfo::Primitive(PrimitiveType::Float), TypeInfo::Primitive(PrimitiveType::Float)])),
-
-            (op, ty, a, b) => Err(TypeError::InvalidBinaryOp(r, op.clone(), a.clone(), b.clone())),
+                return Ok((TypeInfo::Primitive(ret.clone()), [TypeInfo::Primitive(x.clone()), TypeInfo::Primitive(y.clone())]));
+            }
         }
+
+        return Err(TypeError::InvalidBinaryOp(r, self.clone(), a.clone(), b.clone()));
     }
 }
 
@@ -250,30 +252,41 @@ impl<'a> IrNode<'a, Expr<'a>> {
                     Err(err) => errors.push(err),
                 }
             },
-            Expr::Func(param, body) => match ty {
-                TypeInfo::Func(param_ty, body_ty) => {
-                    param.type_info_mut().reify(param_ty, r, errors);
-                    body.type_info_mut().reify(body_ty, r, errors);
+            Expr::Func(param, body) => {
+                //ty.reify(&TypeInfo::Func(TypeInfo::Unknown.into(), TypeInfo::Unknown.into()), r, errors);
+                let param_ty = param.type_info().clone();
+                let scope = match param.inner() {
+                    Pattern::Ident(name) => scope.with(name, &param_ty),
+                };
 
-                    let scope = match param.inner() {
-                        Pattern::Ident(name) => scope.with(name, param.type_info()),
-                    };
+                body.infer_types(&scope, errors);
 
-                    body.infer_types(&scope, errors);
-                },
-                ty => errors.push(TypeError::ExpectedFunc(r, ty.clone())),
+                match ty {
+                    TypeInfo::Func(param_ty, body_ty) => {
+                        body.type_info_mut().reify(body_ty, r, errors);
+                        param.type_info_mut().reify(param_ty, r, errors);
+                    },
+                    TypeInfo::Unknown => {},
+                    ty => errors.push(TypeError::ExpectedFunc(r, ty.clone())),
+                }
+
+                body.infer_types(&scope, errors);
             },
             Expr::Call(expr, arg) => {
                 expr.infer_types(scope, errors);
                 arg.infer_types(scope, errors);
+                expr.type_info_mut().reify(&TypeInfo::Func(arg.type_info().clone().into(), ty.clone().into()), r, errors);
                 match expr.type_info() {
                     TypeInfo::Func(param_ty, body_ty) => {
                         arg.type_info_mut().reify(param_ty, r, errors);
-                        arg.infer_types(scope, errors);
                         ty.reify(body_ty, r, errors);
                     },
+                    TypeInfo::Unknown => {},
                     ty => errors.push(TypeError::ExpectedFunc(r, ty.clone())),
                 }
+
+                expr.infer_types(scope, errors);
+                arg.infer_types(scope, errors);
             },
             Expr::Cast(expr, arg) => {
                 expr.infer_types(scope, errors);

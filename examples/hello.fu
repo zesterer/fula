@@ -1,2 +1,2 @@
 const main: @ -> @ =
-	out("Hello, world");
+	print("Hello, world");
