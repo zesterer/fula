@@ -1,5 +1,8 @@
-const five: [_] =
-	let y: [Int] = m + z;
-	x(5);
+# Inferred to [Int]
+const my_list: [_] = [x, y, z, 3];
 
-const xs: [Int] = [x, y, z];
+# Inferred to Int
+const five = (|x| 5)(0);
+
+# Inferred to Bool
+const my_bool = x or (y and !z or false);

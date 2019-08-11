@@ -106,6 +106,7 @@ impl<'a> TokenList<'a> {
             Number,
             Symbol,
             String(String),
+            Comment,
         }
 
         let mut chars = code
@@ -126,6 +127,7 @@ impl<'a> TokenList<'a> {
                         tokens.push(Token(Lexeme::Eof, SrcRef::from(i)));
                         break;
                     },
+                    '#' => state = State::Comment,
                     '"' => state = State::String(String::new()),
                     '|' => tokens.push(Token(Lexeme::Pipe, SrcRef::from(i))),
                     ',' => tokens.push(Token(Lexeme::Comma, SrcRef::from(i))),
@@ -220,6 +222,10 @@ impl<'a> TokenList<'a> {
                         state = State::Default;
                     },
                     c => buf.push(c),
+                },
+                State::Comment => match c {
+                    '\n' => state = State::Default,
+                    _ => {},
                 },
             }
 

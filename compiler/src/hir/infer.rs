@@ -182,8 +182,9 @@ impl<'a> IrNode<'a, Expr<'a>> {
                 func.infer_types()?;
                 a.infer_types()?;
                 func.ty.homogenize(self.src_ref, &mut TypeInfo::Func(TypeInfo::Unknown.into(), a.ty.clone().into()), self.src_ref)?;
-                if let TypeInfo::Func(a_ty, _) = &mut func.ty {
+                if let TypeInfo::Func(a_ty, body_ty) = &mut func.ty {
                     a.ty.homogenize(a.src_ref, a_ty, a.src_ref)?;
+                    self.ty.homogenize(self.src_ref, body_ty, func.src_ref)?;
                 } else {
                     panic!();
                 }
@@ -220,11 +221,14 @@ impl<'a> IrNode<'a, Expr<'a>> {
                 if let TypeInfo::List(inner_ty) = &mut list_type {
                     elements
                         .iter_mut()
+                        .rev()
                         .map(|e| e.ty.homogenize(e.src_ref, inner_ty, r))
                         .collect::<Result<(), _>>()?;
                 } else {
                     panic!();
                 }
+                // Homogenize the list type again
+                self.ty.homogenize(self.src_ref, &mut list_type, self.src_ref)?;
 
                 elements
                     .iter_mut()
