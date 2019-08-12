@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 fula-syntax = { path = "../syntax" }
+fula-vm = { path = "../vm" }

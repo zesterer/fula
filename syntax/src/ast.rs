@@ -78,6 +78,7 @@ pub enum Type<'a> {
     Func(AstNode<Self>, AstNode<Self>),
     List(AstNode<Self>),
     Tuple(Vec<AstNode<Self>>),
+    Sum(Vec<AstNode<Self>>),
 }
 
 impl<'a> Default for Type<'a> {
@@ -246,12 +247,20 @@ impl<'a> Type<'a> {
         AstNode(Type::Unspecified.into(), r)
     }
 
+    pub fn unit(r: SrcRef) -> AstNode<Self> {
+        AstNode(Type::Tuple(Vec::new()).into(), r)
+    }
+
     pub fn universe(r: SrcRef) -> AstNode<Self> {
         AstNode(Type::Universe.into(), r)
     }
 
     pub fn tuple(fields: VecDeque<AstNode<Type<'a>>>, r: SrcRef) -> AstNode<Self> {
         AstNode(Type::Tuple(fields.into_iter().collect()).into(), r)
+    }
+
+    pub fn sum(variants: Vec<AstNode<Type<'a>>>, r: SrcRef) -> AstNode<Self> {
+        AstNode(Type::Sum(variants).into(), r)
     }
 
     pub fn func(

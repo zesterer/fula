@@ -2,6 +2,7 @@ mod convert;
 mod node;
 mod visit;
 mod infer;
+mod gen;
 
 use std::{
     rc::Rc,
@@ -75,6 +76,7 @@ pub enum Type<'a> {
     Func(TypeInfo<'a>, TypeInfo<'a>),
     List(TypeInfo<'a>),
     Tuple(Vec<TypeInfo<'a>>),
+    Sum(Vec<TypeInfo<'a>>),
     Named(&'a str),
 }
 
@@ -246,7 +248,8 @@ impl<'a> fmt::Display for Type<'a> {
             Type::Primitive(PrimitiveType::String) => write!(f, "String"),
             Type::Func(x, y) => write!(f, "{} -> {}", x.ty.borrow(), y.ty.borrow()),
             Type::List(x) => write!(f, "[{}]", x.ty.borrow()),
-            Type::Tuple(xs) => write!(f, "({})", xs.iter().map(|x| format!("{}, ", x.ty.borrow())).collect::<String>()),
+            Type::Tuple(xs) => write!(f, "({})", xs.iter().map(|x| format!("{}", x.ty.borrow())).collect::<Vec<_>>().join(", ")),
+            Type::Sum(xs) => write!(f, "{}", xs.iter().map(|x| format!("{}", x.ty.borrow())).collect::<Vec<_>>().join(" or ")),
             Type::Named(name) => write!(f, "{}", name),
         }
     }

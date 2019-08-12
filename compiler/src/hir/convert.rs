@@ -25,7 +25,8 @@ impl<'a, 'b> From<&'b ast::Type<'a>> for Type<'a> {
                 TypeInfo::new(ret.inner().into(), ret.src_ref()),
             ),
             ast::Type::List(ty) => Type::List(TypeInfo::new(ty.inner().into(), ty.src_ref())),
-            ast::Type::Tuple(tys) => Type::Tuple(tys.iter().map(|ty| TypeInfo::new(ty.inner().into(), ty.src_ref())).collect()),
+            ast::Type::Tuple(fields) => Type::Tuple(fields.iter().map(|ty| TypeInfo::new(ty.inner().into(), ty.src_ref())).collect()),
+            ast::Type::Sum(variants) => Type::Sum(variants.iter().map(|ty| TypeInfo::new(ty.inner().into(), ty.src_ref())).collect()),
         }
     }
 }

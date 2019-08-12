@@ -35,6 +35,10 @@ impl<'a> Type<'a> {
                     .map(|(a, b)| a.homogenize(b))
                     .collect::<Result<(), _>>()?;
             },
+            (Type::Sum(a), _) => {
+                // TODO: Add a way to check whether one variant is equivalent
+                unimplemented!()
+            },
             (this, other) => return Err(HirError::TypeMismatch(r0, this.clone(), r1, other.clone())),
         }
         Ok(())
@@ -131,8 +135,6 @@ impl BinaryOp {
         } {
             a.homogenize(b)?;
             val_type_info.homogenize(&mut TypeInfo::new(Type::Primitive(PrimitiveType::Bool), val_type_info.src_ref))?;
-
-            println!("{:?}, ", Rc::ptr_eq(&a.ty, &b.ty));
 
             if !Rc::ptr_eq(&a.ty, &b.ty) {
                 match (

@@ -5,6 +5,19 @@ const factorial = |x|
 
 const print = |msg: String, u: @| ((), u);
 
+const x = [];
+
+const y = if true
+	then x
+	else [5];
+
+const len: [Int] -> _ = |xs|
+	if xs = []
+	then 0
+	else 1 + len(xs);
+
+#const z: Int or () = 4;
+
 #const main =
 #	>> print("Hello, world!")
 #	>> print("How are you?");

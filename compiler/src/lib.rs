@@ -1,6 +1,7 @@
 #![feature(bind_by_move_pattern_guards)]
 
 pub mod hir;
+pub mod lir;
 
 use fula_syntax::src::SrcRef;
 use crate::hir::HirError;

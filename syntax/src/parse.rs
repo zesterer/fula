@@ -404,7 +404,7 @@ fn parse_pattern<'a, 'b, I>(iter: &mut I) -> Result<AstNode<(Pattern<'a>, Type<'
 fn parse_type<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
     where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
-    let ty = parse_type_atom(iter)?;
+    let ty = parse_sum_type(iter)?;
 
     match try_parse(iter, |tok, _| match tok.lexeme() {
         Lexeme::Arrow => Some(()),
@@ -413,6 +413,37 @@ fn parse_type<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'
         Some(()) => Ok(Type::func(ty, parse_type(iter)?)),
         None => Ok(ty),
     }
+}
+
+fn parse_sum_type<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
+{
+    let mut types = Vec::new();
+    let mut r = SrcRef::None;
+
+    loop {
+        match attempt(iter, parse_type_atom) {
+            Some(ty) => {
+                r = r.union(ty.src_ref());
+                types.push(ty);
+            },
+            None => break,
+        }
+
+        match try_parse(iter, |tok, _| match tok.lexeme() {
+            Lexeme::Or => Some(()),
+            _ => None,
+        }) {
+            Some(()) => {},
+            None => break,
+        }
+    }
+
+    Ok(match types.len() {
+        0 => Type::unit(r),
+        1 => types.remove(0),
+        _ => Type::sum(types, r),
+    })
 }
 
 fn parse_type_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
@@ -427,6 +458,7 @@ fn parse_type_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseEr
                 Lexeme::RParen => {
                     let r = tok.src_ref().union(tok_r.src_ref());
                     Some(Ok(match fields.len() {
+                        0 => Type::unit(r),
                         1 => fields.remove(0).unwrap(),
                         _ => Type::tuple(fields.into_iter().collect(), r),
                     }))
