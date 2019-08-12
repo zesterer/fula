@@ -8,9 +8,9 @@ const nn: Bool =
 	let nnn = false;
 	nnn;
 
-const tail: [_] -> [_] = |_| [];
+const tail: [Bool] -> [Bool] = |_| [];
 
-const len: [Int] -> Int = |l|
+const len: [_] -> Bool = |l|
 	if l = []
 	then 0
 	else 1 + len(tail(l));

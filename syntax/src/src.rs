@@ -19,7 +19,7 @@ impl SrcLoc {
     pub fn in_context(&self, code: &str) -> (usize, usize) {
         let mut pos = self.0;
         for (i, line) in code.lines().enumerate() {
-            if pos < line.len() {
+            if pos < line.len() + 1 {
                 return (i, pos);
             }
             pos -= line.len() + 1;

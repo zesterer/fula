@@ -57,7 +57,7 @@ pub struct TypeInfo<'a> {
     src_ref: SrcRef,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Type<'a> {
     Unknown,
     Primitive(PrimitiveType),
@@ -218,10 +218,28 @@ impl<'a> TypeInfo<'a> {
 
 impl<'a> fmt::Debug for TypeInfo<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if f.alternate() {
-            write!(f, "{:#?}", &self.ty.borrow())
-        } else {
-            write!(f, "{:?}", &self.ty.borrow())
+        write!(f, "{}", self.ty.borrow())
+    }
+}
+
+impl<'a> fmt::Display for Type<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Type::Unknown => write!(f, "_"),
+            Type::Primitive(PrimitiveType::Universe) => write!(f, "@"),
+            Type::Primitive(PrimitiveType::Bool) => write!(f, "Bool"),
+            Type::Primitive(PrimitiveType::Int) => write!(f, "Int"),
+            Type::Primitive(PrimitiveType::Float) => write!(f, "Float"),
+            Type::Primitive(PrimitiveType::String) => write!(f, "String"),
+            Type::Func(x, y) => write!(f, "{} -> {}", x.ty.borrow(), y.ty.borrow()),
+            Type::List(x) => write!(f, "[{}]", x.ty.borrow()),
+            Type::Named(name) => write!(f, "{}", name),
         }
+    }
+}
+
+impl<'a> fmt::Debug for Type<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
