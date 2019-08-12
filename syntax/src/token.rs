@@ -1,3 +1,4 @@
+use std::fmt;
 use crate::{
     SyntaxError,
     src::SrcRef,
@@ -8,7 +9,7 @@ use crate::{
 pub enum LexErrorKind<'a> {
     UnexpectedChar(char),
     InvalidNumber(&'a str),
-    InvalidSymbol(&'a str),
+    UnknownSymbol(&'a str),
 }
 
 #[derive(Debug)]
@@ -26,8 +27,16 @@ impl<'a> LexError<'a> {
         Self { kind: LexErrorKind::InvalidNumber(s), src_ref }
     }
 
-    pub fn invalid_symbol(s: &'a str, src_ref: SrcRef) -> Self {
-        Self { kind: LexErrorKind::InvalidSymbol(s), src_ref }
+    pub fn unknown_symbol(s: &'a str, src_ref: SrcRef) -> Self {
+        Self { kind: LexErrorKind::UnknownSymbol(s), src_ref }
+    }
+
+    pub fn get_text(&self) -> String {
+        match self.kind {
+            LexErrorKind::UnexpectedChar(c) => format!("Unexpected character '{:?}'", c),
+            LexErrorKind::InvalidNumber(s) => format!("Invalid number '{}'", s),
+            LexErrorKind::UnknownSymbol(s) => format!("Unknown symbol '{}'", s),
+        }
     }
 
     pub fn get_src_refs(&self) -> Vec<SrcRef> {
@@ -86,6 +95,60 @@ pub enum Lexeme<'a> {
     Eof,
 }
 
+impl<'a> fmt::Display for Lexeme<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Lexeme::True => write!(f, "true"),
+            Lexeme::False => write!(f, "false"),
+
+            Lexeme::Pipe => write!(f, "|"),
+            Lexeme::Comma => write!(f, ","),
+            Lexeme::Colon => write!(f, ":"),
+            Lexeme::Semicolon => write!(f, ";"),
+            Lexeme::LParen => write!(f, "("),
+            Lexeme::RParen => write!(f, ")"),
+            Lexeme::LBrack => write!(f, "["),
+            Lexeme::RBrack => write!(f, "]"),
+            Lexeme::Arrow => write!(f, "->"),
+            Lexeme::Universe => write!(f, "@"),
+
+            Lexeme::Const => write!(f, "const"),
+            Lexeme::Let => write!(f, "let"),
+            Lexeme::Type => write!(f, "type"),
+            Lexeme::Data => write!(f, "data"),
+            Lexeme::If => write!(f, "if"),
+            Lexeme::Then => write!(f, "then"),
+            Lexeme::Else => write!(f, "else"),
+
+            Lexeme::Add => write!(f, "+"),
+            Lexeme::Sub => write!(f, "-"),
+            Lexeme::Mul => write!(f, "*"),
+            Lexeme::Div => write!(f, "/"),
+            Lexeme::Rem => write!(f, "%"),
+
+            Lexeme::Eq => write!(f, "="),
+            Lexeme::NotEq => write!(f, "!="),
+            Lexeme::Less => write!(f, "<"),
+            Lexeme::LessEq => write!(f, "<="),
+            Lexeme::More => write!(f, ">"),
+            Lexeme::MoreEq => write!(f, ">="),
+
+            Lexeme::Not => write!(f, "!"),
+
+            Lexeme::And => write!(f, "and"),
+            Lexeme::Or => write!(f, "or"),
+            Lexeme::Xor => write!(f, "xor"),
+
+            Lexeme::Ident(ident) => write!(f, "{}", ident),
+            Lexeme::Int(x) => write!(f, "{}", x),
+            Lexeme::Float(x) => write!(f, "{}", x),
+            Lexeme::String(x) => write!(f, "\"{}\"", x),
+
+            Lexeme::Eof => write!(f, "EOF"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Token<'a>(Lexeme<'a>, SrcRef);
 
@@ -122,6 +185,19 @@ impl<'a> TokenList<'a> {
         let mut tokens = Vec::new();
         let mut errors = Vec::new();
 
+        fn is_singular<'a>(c: char) -> Option<Lexeme<'a>> {
+            Some(match c {
+                '|' => Lexeme::Pipe,
+                ',' => Lexeme::Comma,
+                ';' => Lexeme::Semicolon,
+                '(' => Lexeme::LParen,
+                ')' => Lexeme::RParen,
+                '[' => Lexeme::LBrack,
+                ']' => Lexeme::RBrack,
+                _ => return None,
+            })
+        }
+
         loop {
             let (i, c) = chars.clone().next().unwrap();
             let mut next = true;
@@ -135,17 +211,11 @@ impl<'a> TokenList<'a> {
                         },
                         '#' => state = State::Comment,
                         '"' => state = State::String(String::new()),
-                        '|' => tokens.push(Token(Lexeme::Pipe, SrcRef::from(i))),
-                        ',' => tokens.push(Token(Lexeme::Comma, SrcRef::from(i))),
-                        ';' => tokens.push(Token(Lexeme::Semicolon, SrcRef::from(i))),
-                        '(' => tokens.push(Token(Lexeme::LParen, SrcRef::from(i))),
-                        ')' => tokens.push(Token(Lexeme::RParen, SrcRef::from(i))),
-                        '[' => tokens.push(Token(Lexeme::LBrack, SrcRef::from(i))),
-                        ']' => tokens.push(Token(Lexeme::RBrack, SrcRef::from(i))),
+                        c if is_singular(c).is_some() => tokens.push(Token(is_singular(c).unwrap(), SrcRef::from(i))),
                         c if c.is_whitespace() => {},
                         c if c.is_alphabetic() || c == '_' => state = State::Word,
                         c if c.is_numeric() => state = State::Number,
-                        c if c.is_ascii_punctuation() && c != '_' => state = State::Symbol,
+                        c if c.is_ascii_punctuation() && c != '_' && is_singular(c).is_none() => state = State::Symbol,
                         c => errors.push(LexError::unexpected_char(c, SrcRef::from(i))),
                     }
                 },
@@ -189,7 +259,7 @@ impl<'a> TokenList<'a> {
                     },
                 },
                 State::Symbol => match c {
-                    c if c.is_ascii_punctuation() && c != '_' => {},
+                    c if c.is_ascii_punctuation() && c != '_' && is_singular(c).is_none() => {},
                     _ => {
                         let r = SrcRef::from((start, i));
                         match &code[start..i] {
@@ -208,7 +278,7 @@ impl<'a> TokenList<'a> {
                             ":" => tokens.push(Token(Lexeme::Colon, r)),
                             "->" => tokens.push(Token(Lexeme::Arrow, r)),
                             "@" => tokens.push(Token(Lexeme::Universe, r)),
-                            s => errors.push(LexError::invalid_symbol(s, r)),
+                            s => errors.push(LexError::unknown_symbol(s, r)),
                         }
                         next = false;
                         state = State::Default;

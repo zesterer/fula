@@ -11,6 +11,12 @@ pub enum CompileError<'a> {
 }
 
 impl<'a> CompileError<'a> {
+    pub fn get_text(&self) -> String {
+        match self {
+            CompileError::Hir(hir_err) => hir_err.get_text(),
+        }
+    }
+
     pub fn get_src_refs(&self) -> Vec<SrcRef> {
         match self {
             CompileError::Hir(hir_err) => hir_err.get_src_refs(),

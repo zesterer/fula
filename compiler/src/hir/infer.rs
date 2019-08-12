@@ -28,6 +28,13 @@ impl<'a> Type<'a> {
                 a.homogenize(b)?;
             },
             (Type::Primitive(a), Type::Primitive(b)) if a == b => {},
+            (Type::Tuple(a), Type::Tuple(b)) if a.len() == b.len() => {
+                a
+                    .iter_mut()
+                    .zip(b.iter_mut())
+                    .map(|(a, b)| a.homogenize(b))
+                    .collect::<Result<(), _>>()?;
+            },
             (this, other) => return Err(HirError::TypeMismatch(r0, this.clone(), r1, other.clone())),
         }
         Ok(())
@@ -316,7 +323,7 @@ impl<'a> IrNode<'a, Expr<'a>> {
                     Pattern::Ident(name) => scope.with(name, pat.type_info.clone()),
                 };
                 body.infer_types(&scope)?;
-                self.type_info.homogenize(&mut TypeInfo::new(Type::Func(TypeInfo::unknown(pat.src_ref), body.type_info.clone()), self.src_ref))?;
+                self.type_info.homogenize(&mut TypeInfo::new(Type::Func(pat.type_info.clone(), body.type_info.clone()), self.src_ref))?;
                 if let Type::Func(_, body_ty) = &mut self.type_info.ty.borrow_mut().deref_mut() {
                     body.type_info.homogenize(body_ty)?;
                 } else {
@@ -329,8 +336,12 @@ impl<'a> IrNode<'a, Expr<'a>> {
                     .map(|e| e.infer_types(scope))
                     .collect::<Result<(), _>>()?;
 
-                let mut list_type = TypeInfo::new(Type::List(elements.first_mut().map(|e| e.type_info.clone()).unwrap_or(TypeInfo::unknown(self.src_ref))), self.src_ref);
-                // Homogenize the list type with the inner type
+                let mut list_type = TypeInfo::new(
+                    Type::List(elements.first_mut().map(|e| e.type_info.clone()).unwrap_or(TypeInfo::unknown(self.src_ref))),
+                    self.src_ref,
+                );
+
+                // Homogenize the list type
                 self.type_info.homogenize(&mut list_type)?;
                 // Homogenize the inner types with the list type
                 if let Type::List(inner_ty) = list_type.ty.borrow_mut().deref_mut() {
@@ -338,6 +349,31 @@ impl<'a> IrNode<'a, Expr<'a>> {
                         .iter_mut()
                         .rev()
                         .map(|e| e.type_info.homogenize(inner_ty))
+                        .collect::<Result<(), _>>()?;
+                } else {
+                    panic!();
+                };
+            },
+            Expr::Tuple(fields) => {
+                fields
+                    .iter_mut()
+                    .map(|f| f.infer_types(scope))
+                    .collect::<Result<(), _>>()?;
+
+                let mut tuple_type = TypeInfo::new(
+                    Type::Tuple(fields.iter().map(|f| f.type_info.clone()).collect()),
+                    self.src_ref,
+                );
+
+                // Homogenize the list type
+                self.type_info.homogenize(&mut tuple_type)?;
+
+                // Homogenize the inner types with the list type
+                if let Type::Tuple(field_tys) = tuple_type.ty.borrow_mut().deref_mut() {
+                    fields
+                        .iter_mut()
+                        .zip(field_tys.iter_mut())
+                        .map(|(f, f_ty)| f.type_info.homogenize(f_ty))
                         .collect::<Result<(), _>>()?;
                 } else {
                     panic!();

@@ -15,6 +15,13 @@ pub enum Error<'a, 'b> {
 }
 
 impl<'a, 'b> Error<'a, 'b> {
+    pub fn get_text(&self) -> String {
+        match self {
+            Error::Syntax(syntax_err) => syntax_err.get_text(),
+            Error::Compile(compile_err) => compile_err.get_text(),
+        }
+    }
+
     pub fn get_src_refs(&self) -> Vec<SrcRef> {
         match self {
             Error::Syntax(syntax_err) => syntax_err.get_src_refs(),
@@ -36,10 +43,9 @@ impl fmt::Display for Repeat {
 
 fn display_errors(code: &str, errors: Vec<Error>) {
     for error in errors {
-        //let src_refs = error.get_text();
         let src_refs = error.get_src_refs();
 
-        println!("ERROR:");
+        println!("Error: {}", error.get_text());
 
         for ((line0, col0), (line1, col1)) in src_refs
             .into_iter()
@@ -61,45 +67,10 @@ fn display_errors(code: &str, errors: Vec<Error>) {
                 print!("\n");
             }
         }
-
-        match error {
-            Error::Syntax(err) => println!("Syntax Error: {:?}", err),
-            Error::Compile(err) => println!("Compile Error: {:?}", err),
-        }
     }
 }
 
 fn main() {
-    let code = r#"
-        const len: List -> _ = |l|
-            if len(l) = 0
-            then 0
-            else 1 + len(tail(l));
-
-        const io_test: @ -> @ =
-            print("Hello, world!");
-
-        const main: @ -> @ =
-            let x = 3 + 4;
-            if x = 8
-            then if 4 < 7
-                then || 1337
-                else 64
-            else 42;
-    "#;
-
-    let code = r#"
-        const factorial: Int -> Int = |x|
-            if x = 0
-            then 1
-            else x * factorial(x - 1);
-
-        const add: Int -> Int -> Int = |x, y|
-            x + y;
-
-        const fact_10: _ = factorial(10);
-    "#;
-
     let code = include_str!("../examples/basic.fu");
 
     let tokens = match lex(code) {

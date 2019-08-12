@@ -1,5 +1,5 @@
 use std::{
-    fmt::Debug,
+    fmt,
     collections::VecDeque,
 };
 use crate::{
@@ -27,6 +27,20 @@ pub enum Thing<'a, 'b> {
     Lexeme(&'b Lexeme<'a>),
 }
 
+impl<'a, 'b> fmt::Display for Thing<'a, 'b> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Thing::Decl => write!(f, "declaration"),
+            Thing::Pattern => write!(f, "pattern"),
+            Thing::Type => write!(f, "type"),
+            Thing::Ident => write!(f, "identifier"),
+            Thing::Expr => write!(f, "expression"),
+            Thing::Atom => write!(f, "expression"),
+            Thing::Lexeme(l) => write!(f, "`{}`", l),
+        }
+    }
+}
+
 impl<'a, 'b> From<&'b Lexeme<'a>> for Thing<'a, 'b> {
     fn from(lexeme: &'b Lexeme<'a>) -> Self {
         Thing::Lexeme(lexeme)
@@ -47,6 +61,12 @@ impl<'a, 'b> ParseError<'a, 'b> {
                 found: found.into()
             },
             src_ref,
+        }
+    }
+
+    pub fn get_text(&self) -> String {
+        match &self.kind {
+            ParseErrorKind::Expected { expected, found } => format!("Expected {}, found {}", expected, found),
         }
     }
 
@@ -72,7 +92,7 @@ pub fn parse<'a, 'b>(tokens: &'b [Token<'a>]) -> Result<Ast<'a>, ParseError<'a, 
 }
 
 fn parse_decl<'a, 'b, I>(iter: &mut I) -> Result<Decl<'a>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     try_parse(iter, |tok, iter| match tok.lexeme() {
         Lexeme::Const => try_parse(iter, |ident_tok, iter| match ident_tok.lexeme() {
@@ -97,13 +117,13 @@ fn parse_decl<'a, 'b, I>(iter: &mut I) -> Result<Decl<'a>, ParseError<'a, 'b>>
 }
 
 fn parse_expr<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     parse_logical(iter)
 }
 
 fn parse_logical<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     let mut expr = parse_comparison(iter)?;
 
@@ -121,7 +141,7 @@ fn parse_logical<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseErro
 }
 
 fn parse_comparison<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     let mut expr = parse_addition(iter)?;
 
@@ -142,7 +162,7 @@ fn parse_comparison<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseE
 }
 
 fn parse_addition<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     let mut expr = parse_multiplication(iter)?;
 
@@ -159,7 +179,7 @@ fn parse_addition<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseErr
 }
 
 fn parse_multiplication<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     let mut expr = parse_unary(iter)?;
 
@@ -177,7 +197,7 @@ fn parse_multiplication<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, Pa
 }
 
 fn parse_unary<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     match try_parse(iter, |tok, _| match tok.lexeme() {
         Lexeme::Not => Some(UnaryOp::Not),
@@ -190,7 +210,7 @@ fn parse_unary<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<
 }
 
 fn parse_call<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     let mut expr = parse_atom(iter)?;
 
@@ -212,7 +232,7 @@ fn parse_call<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'
 }
 
 fn parse_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     try_parse(iter, |tok, iter| match tok.lexeme() {
         Lexeme::Ident(ident) => Some(Ok(Expr::ident(ident, tok.src_ref()))),
@@ -221,10 +241,16 @@ fn parse_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'
         Lexeme::Int(x) => Some(Ok(Expr::literal(Literal::Int(*x), tok.src_ref()))),
         Lexeme::Float(x) => Some(Ok(Expr::literal(Literal::Float(*x), tok.src_ref()))),
         Lexeme::String(x) => Some(Ok(Expr::literal(Literal::String(x.clone()), tok.src_ref()))),
-        Lexeme::LParen => match parse_expr(iter) {
-            Ok(inner) => try_parse(iter, |tok, _| match tok.lexeme() {
-                Lexeme::RParen => Some(Ok(inner)),
-                l => Some(Err(ParseError::expected(&Lexeme::RParen, l, tok.src_ref()))),
+        Lexeme::LParen => match parse_args(iter) {
+            Ok(mut fields) => try_parse(iter, |tok_r, _| match tok_r.lexeme() {
+                Lexeme::RParen => {
+                    let r = tok.src_ref().union(tok_r.src_ref());
+                    Some(Ok(match fields.len() {
+                        1 => fields.remove(0).unwrap(),
+                        _ => Expr::tuple(fields, r),
+                    }))
+                },
+                l => Some(Err(ParseError::expected(&Lexeme::RParen, l, tok_r.src_ref()))),
             }),
             Err(err) => Some(Err(err)),
         },
@@ -289,7 +315,7 @@ fn parse_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'
 }
 
 fn parse_args<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<Expr<'a>>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     let mut args = VecDeque::new();
 
@@ -312,7 +338,7 @@ fn parse_args<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<Expr<'a>>>, Pa
 }
 
 fn parse_params<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<(Pattern<'a>, Type<'a>)>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     let mut params = VecDeque::new();
 
@@ -334,8 +360,31 @@ fn parse_params<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<(Pattern<'a>
     Ok(params)
 }
 
+fn parse_type_list<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<Type<'a>>>, ParseError<'a, 'b>>
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
+{
+    let mut types = VecDeque::new();
+
+    loop {
+        match attempt(iter, parse_type) {
+            Some(pat) => types.push_back(pat),
+            None => break,
+        }
+
+        match try_parse(iter, |tok, _| match tok.lexeme() {
+            Lexeme::Comma => Some(()),
+            _ => None,
+        }) {
+            Some(_) => {},
+            None => break,
+        }
+    }
+
+    Ok(types)
+}
+
 fn parse_pattern<'a, 'b, I>(iter: &mut I) -> Result<AstNode<(Pattern<'a>, Type<'a>)>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     let pat = try_parse(iter, |tok, _| match tok.lexeme() {
         Lexeme::Ident(ident) => Some(Ok(Pattern::ident(ident, tok.src_ref()))),
@@ -353,7 +402,7 @@ fn parse_pattern<'a, 'b, I>(iter: &mut I) -> Result<AstNode<(Pattern<'a>, Type<'
 }
 
 fn parse_type<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     let ty = parse_type_atom(iter)?;
 
@@ -367,16 +416,22 @@ fn parse_type<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'
 }
 
 fn parse_type_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     try_parse(iter, |tok, iter| match tok.lexeme() {
         Lexeme::Ident("_") => Some(Ok(Type::unspecified(tok.src_ref()))),
         Lexeme::Ident(ident) => Some(Ok(Type::ident(ident, tok.src_ref()))),
         Lexeme::Universe => Some(Ok(Type::universe(tok.src_ref()))),
-        Lexeme::LParen => match parse_type(iter) {
-            Ok(ty) => try_parse(iter, |tok, _| match tok.lexeme() {
-                Lexeme::RParen => Some(Ok(ty)),
-                l => Some(Err(ParseError::expected(&Lexeme::RParen, l, tok.src_ref()))),
+        Lexeme::LParen => match parse_type_list(iter) {
+            Ok(mut fields) => try_parse(iter, |tok_r, _| match tok_r.lexeme() {
+                Lexeme::RParen => {
+                    let r = tok.src_ref().union(tok_r.src_ref());
+                    Some(Ok(match fields.len() {
+                        1 => fields.remove(0).unwrap(),
+                        _ => Type::tuple(fields.into_iter().collect(), r),
+                    }))
+                },
+                l => Some(Err(ParseError::expected(&Lexeme::RParen, l, tok_r.src_ref()))),
             }),
             Err(err) => Some(Err(err)),
         },
@@ -396,7 +451,7 @@ fn parse_type_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseEr
 }
 
 fn parse_type_annotation<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + Debug
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
     try_parse(iter, |tok, iter| match tok.lexeme() {
         Lexeme::Colon => Some(parse_type(iter)),

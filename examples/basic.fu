@@ -2,3 +2,11 @@ const factorial = |x|
 	if x = 0
 	then 1
 	else x * factorial(x - 1);
+
+const print = |msg: String, u: @| ((), u);
+
+#const main =
+#	>> print("Hello, world!")
+#	>> print("How are you?");
+
+const main = factorial(10);

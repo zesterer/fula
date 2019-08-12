@@ -62,6 +62,7 @@ pub enum Expr<'a> {
     Func(AstNode<(Pattern<'a>, Type<'a>)>, AstNode<Self>),
     Call(AstNode<Self>, AstNode<Self>),
     List(Vec<AstNode<Self>>),
+    Tuple(Vec<AstNode<Self>>),
 }
 
 #[derive(Debug)]
@@ -76,6 +77,7 @@ pub enum Type<'a> {
     Ident(&'a str),
     Func(AstNode<Self>, AstNode<Self>),
     List(AstNode<Self>),
+    Tuple(Vec<AstNode<Self>>),
 }
 
 impl<'a> Default for Type<'a> {
@@ -149,6 +151,10 @@ impl<'a> Expr<'a> {
         AstNode(Expr::Literal(litr).into(), r)
     }
 
+    pub fn tuple(fields: VecDeque<AstNode<Expr<'a>>>, r: SrcRef) -> AstNode<Self> {
+        AstNode(Expr::Tuple(fields.into_iter().collect()).into(), r)
+    }
+
     pub fn func(
         mut params: VecDeque<AstNode<(Pattern<'a>, Type<'a>)>>,
         a: impl Into<AstNode<Expr<'a>>>,
@@ -168,7 +174,7 @@ impl<'a> Expr<'a> {
     ) -> AstNode<Self> {
         let a = a.into();
 
-        match args.pop_front() {
+        match args.pop_back() {
             Some(expr) => {
                 let r = expr.src_ref();
                 AstNode(Expr::Call(Expr::call(a, args), expr).into(), r)
@@ -242,6 +248,10 @@ impl<'a> Type<'a> {
 
     pub fn universe(r: SrcRef) -> AstNode<Self> {
         AstNode(Type::Universe.into(), r)
+    }
+
+    pub fn tuple(fields: VecDeque<AstNode<Type<'a>>>, r: SrcRef) -> AstNode<Self> {
+        AstNode(Type::Tuple(fields.into_iter().collect()).into(), r)
     }
 
     pub fn func(

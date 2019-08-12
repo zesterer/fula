@@ -16,6 +16,13 @@ pub enum SyntaxError<'a, 'b> {
 }
 
 impl<'a, 'b> SyntaxError<'a, 'b> {
+    pub fn get_text(&self) -> String {
+        match self {
+            SyntaxError::Lex(lex_err) => lex_err.get_text(),
+            SyntaxError::Parse(parse_err) => parse_err.get_text(),
+        }
+    }
+
     pub fn get_src_refs(&self) -> Vec<SrcRef> {
         match self {
             SyntaxError::Lex(lex_err) => lex_err.get_src_refs(),

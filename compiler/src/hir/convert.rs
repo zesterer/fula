@@ -25,6 +25,7 @@ impl<'a, 'b> From<&'b ast::Type<'a>> for Type<'a> {
                 TypeInfo::new(ret.inner().into(), ret.src_ref()),
             ),
             ast::Type::List(ty) => Type::List(TypeInfo::new(ty.inner().into(), ty.src_ref())),
+            ast::Type::Tuple(tys) => Type::Tuple(tys.iter().map(|ty| TypeInfo::new(ty.inner().into(), ty.src_ref())).collect()),
         }
     }
 }
@@ -55,6 +56,7 @@ impl<'a, 'b> From<&'b ast::Expr<'a>> for Expr<'a> {
             },
             ast::Expr::Call(expr, a) => Expr::Call(expr.into(), a.into()),
             ast::Expr::List(elements) => Expr::List(elements.iter().map(|e| e.into()).collect()),
+            ast::Expr::Tuple(elements) => Expr::Tuple(elements.iter().map(|e| e.into()).collect()),
         }
     }
 }

@@ -28,6 +28,17 @@ pub enum HirError<'a> {
 }
 
 impl<'a> HirError<'a> {
+    pub fn get_text(&self) -> String {
+        match self {
+            HirError::ExpectedType(_, ty0, ty1) => format!("Expected type '{}' but found type '{}'", ty0, ty1),
+            HirError::TypeMismatch(_, ty0, _, ty1) => format!("Type '{}' is incompatible with type '{}'", ty0, ty1),
+            HirError::TypeAmbiguity(_) => format!("Type could not be inferred and is ambiguous"),
+            HirError::InvalidBinary(_, op, ty0, ty1) => format!("Could not apply binary operation '{}' to operands of types '{}' and '{}'", op, ty0, ty1),
+            HirError::InvalidUnary(_, op, ty0) => format!("Could not apply unary operation '{}' to operand of type '{}'", op, ty0),
+            HirError::CannotFindIdent(_, ident) => format!("'{}' was not found within the current scope", ident),
+        }
+    }
+
     pub fn get_src_refs(&self) -> Vec<SrcRef> {
         match self {
             HirError::ExpectedType(r, _, _) => vec![*r],
@@ -63,6 +74,7 @@ pub enum Type<'a> {
     Primitive(PrimitiveType),
     Func(TypeInfo<'a>, TypeInfo<'a>),
     List(TypeInfo<'a>),
+    Tuple(Vec<TypeInfo<'a>>),
     Named(&'a str),
 }
 
@@ -86,6 +98,7 @@ pub enum Expr<'a> {
     Func(IrNode<'a, Pattern<'a>>, IrNode<'a, Self>),
     Call(IrNode<'a, Self>, IrNode<'a, Self>),
     List(Vec<IrNode<'a, Self>>),
+    Tuple(Vec<IrNode<'a, Self>>),
 }
 
 #[derive(Debug)]
@@ -233,7 +246,40 @@ impl<'a> fmt::Display for Type<'a> {
             Type::Primitive(PrimitiveType::String) => write!(f, "String"),
             Type::Func(x, y) => write!(f, "{} -> {}", x.ty.borrow(), y.ty.borrow()),
             Type::List(x) => write!(f, "[{}]", x.ty.borrow()),
+            Type::Tuple(xs) => write!(f, "({})", xs.iter().map(|x| format!("{}, ", x.ty.borrow())).collect::<String>()),
             Type::Named(name) => write!(f, "{}", name),
+        }
+    }
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UnaryOp::Neg => write!(f, "-"),
+            UnaryOp::Not => write!(f, "!"),
+        }
+    }
+}
+
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BinaryOp::Add => write!(f, "+"),
+            BinaryOp::Sub => write!(f, "-"),
+            BinaryOp::Mul => write!(f, "*"),
+            BinaryOp::Div => write!(f, "/"),
+            BinaryOp::Rem => write!(f, "%"),
+
+            BinaryOp::And => write!(f, "and"),
+            BinaryOp::Or => write!(f, "or"),
+            BinaryOp::Xor => write!(f, "xor"),
+
+            BinaryOp::Eq => write!(f, "="),
+            BinaryOp::NotEq => write!(f, "!="),
+            BinaryOp::Less => write!(f, "<"),
+            BinaryOp::LessEq => write!(f, "<="),
+            BinaryOp::More => write!(f, ">"),
+            BinaryOp::MoreEq => write!(f, ">="),
         }
     }
 }
