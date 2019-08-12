@@ -1,29 +1,4 @@
-const x = [];
-const y = [];
-const z = [];
-const a: [Int] = [];
-const b: [Int] = [];
-
-const nn: Bool =
-	let nnn = false;
-	nnn;
-
-const tail: [Bool] -> [Bool] = |_| [];
-
-const len: [_] -> Bool = |l|
-	if l = []
-	then 0
-	else 1 + len(tail(l));
-
-# Inferred to [Int]
-const my_list: [_] = [x, y, z, [4, 5, 3]];
-
-# Inferred to Int
-const five = (|x| 5)(0);
-
-# Inferred to Bool
-const my_bool =
-	let x = true;
-	let y = true;
-	let z = true;
-	x or (y and !z or false);
+const factorial = |x|
+	if x = 0
+	then 1
+	else x * factorial(x - 1);

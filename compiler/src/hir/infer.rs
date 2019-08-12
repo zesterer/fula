@@ -313,7 +313,7 @@ impl<'a> IrNode<'a, Expr<'a>> {
             },
             Expr::Func(pat, body) => {
                 let scope = match pat.inner.deref() {
-                    Pattern::Ident(name) => scope.with(name, TypeInfo::unknown(pat.src_ref)),
+                    Pattern::Ident(name) => scope.with(name, pat.type_info.clone()),
                 };
                 body.infer_types(&scope)?;
                 self.type_info.homogenize(&mut TypeInfo::new(Type::Func(TypeInfo::unknown(pat.src_ref), body.type_info.clone()), self.src_ref))?;
