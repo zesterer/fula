@@ -78,7 +78,7 @@ pub enum Type<'a> {
     Func(AstNode<Self>, AstNode<Self>),
     List(AstNode<Self>),
     Tuple(Vec<AstNode<Self>>),
-    Sum(Vec<AstNode<Self>>),
+    Sum(Vec<(&'a str, AstNode<Self>)>),
 }
 
 impl<'a> Default for Type<'a> {
@@ -259,7 +259,7 @@ impl<'a> Type<'a> {
         AstNode(Type::Tuple(fields.into_iter().collect()).into(), r)
     }
 
-    pub fn sum(variants: Vec<AstNode<Type<'a>>>, r: SrcRef) -> AstNode<Self> {
+    pub fn sum(variants: Vec<(&'a str, AstNode<Type<'a>>)>, r: SrcRef) -> AstNode<Self> {
         AstNode(Type::Sum(variants).into(), r)
     }
 

@@ -20,6 +20,7 @@ pub enum ParseErrorKind<'a, 'b> {
 pub enum Thing<'a, 'b> {
     Decl,
     Pattern,
+    Variant,
     Type,
     Ident,
     Expr,
@@ -32,6 +33,7 @@ impl<'a, 'b> fmt::Display for Thing<'a, 'b> {
         match self {
             Thing::Decl => write!(f, "declaration"),
             Thing::Pattern => write!(f, "pattern"),
+            Thing::Variant => write!(f, "variant"),
             Thing::Type => write!(f, "type"),
             Thing::Ident => write!(f, "identifier"),
             Thing::Expr => write!(f, "expression"),
@@ -383,6 +385,42 @@ fn parse_type_list<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<Type<'a>>
     Ok(types)
 }
 
+fn parse_variant<'a, 'b, I>(iter: &mut I) -> Result<(&'a str, AstNode<Type<'a>>), ParseError<'a, 'b>>
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
+{
+    try_parse(iter, |tok_name, iter| match tok_name.lexeme() {
+        Lexeme::Ident(name) => try_parse_or(iter, |tok, iter| match tok.lexeme() {
+            Lexeme::Colon => Ok(parse_type(iter).map(|ty| (*name, ty))),
+            _ => Err(Ok((name, Type::unit(tok_name.src_ref())))),
+        }),
+        l => Some(Err(ParseError::expected(Thing::Variant, l, tok_name.src_ref()))),
+    })
+        .unwrap()
+}
+
+fn parse_variant_list<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<(&'a str, AstNode<Type<'a>>)>, ParseError<'a, 'b>>
+    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
+{
+    let mut variants = VecDeque::new();
+
+    loop {
+        match attempt(iter, parse_variant) {
+            Some(pat) => variants.push_back(pat),
+            None => break,
+        }
+
+        match try_parse(iter, |tok, _| match tok.lexeme() {
+            Lexeme::Comma => Some(()),
+            _ => None,
+        }) {
+            Some(_) => {},
+            None => break,
+        }
+    }
+
+    Ok(variants)
+}
+
 fn parse_pattern<'a, 'b, I>(iter: &mut I) -> Result<AstNode<(Pattern<'a>, Type<'a>)>, ParseError<'a, 'b>>
     where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
@@ -404,7 +442,7 @@ fn parse_pattern<'a, 'b, I>(iter: &mut I) -> Result<AstNode<(Pattern<'a>, Type<'
 fn parse_type<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
     where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
-    let ty = parse_sum_type(iter)?;
+    let ty = parse_type_atom(iter)?;
 
     match try_parse(iter, |tok, _| match tok.lexeme() {
         Lexeme::Arrow => Some(()),
@@ -413,37 +451,6 @@ fn parse_type<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'
         Some(()) => Ok(Type::func(ty, parse_type(iter)?)),
         None => Ok(ty),
     }
-}
-
-fn parse_sum_type<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
-{
-    let mut types = Vec::new();
-    let mut r = SrcRef::None;
-
-    loop {
-        match attempt(iter, parse_type_atom) {
-            Some(ty) => {
-                r = r.union(ty.src_ref());
-                types.push(ty);
-            },
-            None => break,
-        }
-
-        match try_parse(iter, |tok, _| match tok.lexeme() {
-            Lexeme::Or => Some(()),
-            _ => None,
-        }) {
-            Some(()) => {},
-            None => break,
-        }
-    }
-
-    Ok(match types.len() {
-        0 => Type::unit(r),
-        1 => types.remove(0),
-        _ => Type::sum(types, r),
-    })
 }
 
 fn parse_type_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
@@ -464,6 +471,16 @@ fn parse_type_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseEr
                     }))
                 },
                 l => Some(Err(ParseError::expected(&Lexeme::RParen, l, tok_r.src_ref()))),
+            }),
+            Err(err) => Some(Err(err)),
+        },
+        Lexeme::LBrace => match parse_variant_list(iter) {
+            Ok(variants) => try_parse(iter, |tok_r, _| match tok_r.lexeme() {
+                Lexeme::RBrace => {
+                    let r = tok.src_ref().union(tok_r.src_ref());
+                    Some(Ok(Type::sum(variants.into_iter().collect(), r)))
+                },
+                l => Some(Err(ParseError::expected(&Lexeme::RBrace, l, tok_r.src_ref()))),
             }),
             Err(err) => Some(Err(err)),
         },
@@ -503,6 +520,23 @@ fn try_parse<'a, 'c: 'a, I, R, F>(iter: &mut I, f: F) -> Option<R>
     let tok = f(tok, &mut iter2)?;
     *iter = iter2;
     Some(tok)
+}
+
+fn try_parse_or<'a, 'c: 'a, I, R, F>(iter: &mut I, f: F) -> Option<R>
+    where
+        I: Iterator<Item=&'a Token<'c>> + Clone,
+        F: FnOnce(&'a Token<'c>, &mut I) -> Result<R, R>,
+{
+    let mut iter2 = iter.clone();
+    let tok = iter2.next()?;
+
+    Some(match f(tok, &mut iter2) {
+        Ok(tok) => {
+            *iter = iter2;
+            tok
+        },
+        Err(tok) => tok,
+    })
 }
 
 fn attempt<'a, 'c: 'a, I, R, E, F>(iter: &mut I, f: F) -> Option<R>

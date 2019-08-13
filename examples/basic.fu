@@ -16,7 +16,9 @@ const len: [Int] -> _ = |xs|
 	then 0
 	else 1 + len(xs);
 
-#const z: Int or () = 4;
+#data Option |T| = { Some: T, None };
+
+const z: { Some: Int, None } = 4;
 
 #const main =
 #	>> print("Hello, world!")

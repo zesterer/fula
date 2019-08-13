@@ -57,6 +57,8 @@ pub enum Lexeme<'a> {
     RParen,
     LBrack,
     RBrack,
+    LBrace,
+    RBrace,
     Arrow,
     Universe,
 
@@ -109,6 +111,8 @@ impl<'a> fmt::Display for Lexeme<'a> {
             Lexeme::RParen => write!(f, ")"),
             Lexeme::LBrack => write!(f, "["),
             Lexeme::RBrack => write!(f, "]"),
+            Lexeme::LBrace => write!(f, "{{"),
+            Lexeme::RBrace => write!(f, "}}"),
             Lexeme::Arrow => write!(f, "->"),
             Lexeme::Universe => write!(f, "@"),
 
@@ -194,6 +198,8 @@ impl<'a> TokenList<'a> {
                 ')' => Lexeme::RParen,
                 '[' => Lexeme::LBrack,
                 ']' => Lexeme::RBrack,
+                '{' => Lexeme::LBrace,
+                '}' => Lexeme::RBrace,
                 _ => return None,
             })
         }

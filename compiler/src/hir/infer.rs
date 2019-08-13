@@ -35,7 +35,7 @@ impl<'a> Type<'a> {
                     .map(|(a, b)| a.homogenize(b))
                     .collect::<Result<(), _>>()?;
             },
-            (Type::Sum(a), _) => {
+            (Type::Sum(_), _) => {
                 // TODO: Add a way to check whether one variant is equivalent
                 unimplemented!()
             },
