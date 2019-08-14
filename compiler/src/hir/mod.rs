@@ -69,7 +69,7 @@ pub struct TypeInfo<'a> {
     src_ref: SrcRef,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Type<'a> {
     Unknown,
     Primitive(PrimitiveType),
@@ -240,7 +240,7 @@ impl<'a> TypeInfo<'a> {
 
 impl<'a> fmt::Debug for TypeInfo<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.ty.borrow())
+        write!(f, "{:?}", self.ty.borrow())
     }
 }
 
@@ -293,11 +293,5 @@ impl fmt::Display for BinaryOp {
             BinaryOp::More => write!(f, ">"),
             BinaryOp::MoreEq => write!(f, ">="),
         }
-    }
-}
-
-impl<'a> fmt::Debug for Type<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self)
     }
 }

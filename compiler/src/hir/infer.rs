@@ -16,6 +16,23 @@ impl Value {
 }
 
 impl<'a> Type<'a> {
+    pub fn matches(&self, other: &Type<'a>) -> bool {
+        match (self, other) {
+            (Type::Unknown, _) => true,
+            (_, Type::Unknown) => true,
+            (Type::Func(a, b), Type::Func(c, d)) => a.ty.borrow().matches(&c.ty.borrow()) && b.ty.borrow().matches(&d.ty.borrow()),
+            (Type::List(a), Type::List(b)) => a.ty.borrow().matches(&b.ty.borrow()),
+            (Type::Primitive(a), Type::Primitive(b)) => a == b,
+            (Type::Unit, Type::Unit) => true,
+            (Type::Singular(a), Type::Singular(b)) => a.ty.borrow().matches(&b.ty.borrow()),
+            (Type::Tuple(a), Type::Tuple(b)) if a.len() == b.len() => a
+                .iter()
+                .zip(b.iter())
+                .all(|(a, b)| a.ty.borrow().matches(&b.ty.borrow())),
+            _ => false,
+        }
+    }
+
     pub fn homogenize(&mut self, r0: SrcRef, other: &mut Type<'a>, r1: SrcRef) -> Result<(), HirError<'a>> {
         match (self, other) {
             (this @ Type::Unknown, other) => *this = other.clone(),
@@ -45,6 +62,16 @@ impl<'a> Type<'a> {
                 *this = combined.clone();
                 *other = combined.clone();
             },
+            (mut this @ Type::Sum { .. }, mut other @ Type::Singular(_)) => {
+                let combined = if let (Type::Sum { fixed, variants: a }, Type::Singular(b)) = (&mut this, &mut other) {
+                    Type::Sum { fixed: *fixed, variants: a.iter().cloned().chain(Some(b.clone())).collect() }
+                } else {
+                    unreachable!()
+                };
+                *this = combined.clone();
+                *other = combined.clone();
+            },
+            (this @ Type::Singular(_), other @ Type::Sum { .. }) => other.homogenize(r1, this, r0)?,
             (mut this @ Type::Sum { fixed: false, .. }, mut other @ Type::Sum { fixed: false, .. }) => {
                 let combined = if let (Type::Sum { fixed: false, variants: a }, Type::Sum { fixed: false, variants: b }) = (&mut this, &mut other) {
                     Type::Sum { fixed: false, variants: a.iter().cloned().chain(b.iter().cloned()).collect() }
@@ -54,20 +81,24 @@ impl<'a> Type<'a> {
                 *this = combined.clone();
                 *other = combined.clone();
             },
-            /*
-            (Type::Sum { fixed: true, variants: a }, Type::Sum { fixed: false, variants: b }) => {
-                'b: for b in b {
-                    for a in a {
-                        if a.matches(b) {
-                            a.homogenize(b)?;
-                            continue 'b;
-                        }
-                    }
+            (mut this @ Type::Sum { fixed: true, .. }, mut other @ Type::Sum { fixed: false, .. }) => {
+                let success = if let (Type::Sum { fixed: true, variants: a }, Type::Sum { fixed: false, variants: b }) = (&mut this, &mut other) {
+                    b
+                        .iter()
+                        .all(|b| a
+                            .iter()
+                            .any(|a| b.ty.borrow().matches(&a.ty.borrow())))
+                } else {
+                    unreachable!()
+                };
+
+                if success {
+                    *other = this.clone();
+                } else {
                     return Err(HirError::TypeMismatch(r0, this.clone(), r1, other.clone()));
                 }
             },
-            (this @ Type::Sum { fixed: false, .. }, other @ Type::Sum { fixed: true, .. }) => other.homogenize(this)?,
-            */
+            (this @ Type::Sum { fixed: false, .. }, other @ Type::Sum { fixed: true, .. }) => other.homogenize(r1, this, r0)?,
             (this, other) => return Err(HirError::TypeMismatch(r0, this.clone(), r1, other.clone())),
         }
         Ok(())
@@ -272,8 +303,8 @@ impl TernaryOp {
                 }
 
                 a.type_info.homogenize(&mut TypeInfo::new(Type::Primitive(PrimitiveType::Bool), val_type_info.src_ref))?;
-                c.type_info.homogenize(&mut b.type_info)?;
                 val_type_info.homogenize(&mut b.type_info)?;
+                c.type_info.homogenize(&mut b.type_info)?;
                 Ok(())
             },
         }
@@ -403,10 +434,10 @@ impl<'a> IrNode<'a, Expr<'a>> {
                     self.src_ref,
                 );
 
-                // Homogenize the list type
+                // Homogenize the tuple type
                 self.type_info.homogenize(&mut tuple_type)?;
 
-                // Homogenize the inner types with the list type
+                // Homogenize the inner types with the tuple type
                 if let Type::Tuple(field_tys) = tuple_type.ty.borrow_mut().deref_mut() {
                     fields
                         .iter_mut()

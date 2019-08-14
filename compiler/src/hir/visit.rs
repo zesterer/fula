@@ -13,6 +13,15 @@ impl<'a> TypeInfo<'a> {
             Type::List(a) => {
                 a.visit_type_info(f)?;
             },
+            Type::Singular(a) => {
+                a.visit_type_info(f)?;
+            },
+            Type::Tuple(xs) => for x in xs.iter() {
+                x.visit_type_info(f)?;
+            },
+            Type::Sum { variants, .. } => for x in variants.iter() {
+                x.visit_type_info(f)?;
+            },
             _ => {},
         }
 
@@ -47,6 +56,13 @@ impl<'a> IrNode<'a, Expr<'a>> {
             Expr::Call(func, a) => {
                 func.visit(&mut f)?;
                 a.visit(&mut f)?;
+            },
+            Expr::List(xs) => for x in xs.iter() {
+                x.visit(&mut f)?;
+            },
+            Expr::Singular(x) => x.visit(&mut f)?,
+            Expr::Tuple(xs) => for x in xs.iter() {
+                x.visit(&mut f)?;
             },
             _ => {},
         }
