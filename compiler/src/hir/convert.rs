@@ -25,8 +25,13 @@ impl<'a, 'b> From<&'b ast::Type<'a>> for Type<'a> {
                 TypeInfo::new(ret.inner().into(), ret.src_ref()),
             ),
             ast::Type::List(ty) => Type::List(TypeInfo::new(ty.inner().into(), ty.src_ref())),
+            ast::Type::Unit => Type::Unit,
+            ast::Type::Singular(ty) => Type::Singular(TypeInfo::new(ty.inner().into(), ty.src_ref()).into()),
             ast::Type::Tuple(fields) => Type::Tuple(fields.iter().map(|ty| TypeInfo::new(ty.inner().into(), ty.src_ref())).collect()),
-            ast::Type::Sum(variants) => Type::Sum(variants.iter().map(|(name, ty)| (*name, TypeInfo::new(ty.inner().into(), ty.src_ref()))).collect()),
+            ast::Type::Sum(variants) => Type::Sum {
+                fixed: true,
+                variants: variants.iter().map(|ty| TypeInfo::new(ty.inner().into(), ty.src_ref())).collect(),
+            },
         }
     }
 }
@@ -57,6 +62,8 @@ impl<'a, 'b> From<&'b ast::Expr<'a>> for Expr<'a> {
             },
             ast::Expr::Call(expr, a) => Expr::Call(expr.into(), a.into()),
             ast::Expr::List(elements) => Expr::List(elements.iter().map(|e| e.into()).collect()),
+            ast::Expr::Unit => Expr::Unit,
+            ast::Expr::Singular(expr) => Expr::Singular(expr.into()),
             ast::Expr::Tuple(elements) => Expr::Tuple(elements.iter().map(|e| e.into()).collect()),
         }
     }

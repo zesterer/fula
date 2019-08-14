@@ -3,7 +3,7 @@ const factorial = |x|
 	then 1
 	else x * factorial(x - 1);
 
-const print = |msg: String, u: @| ((), u);
+const print = |msg: String, u: @| {{}, u};
 
 const x = [];
 
@@ -11,14 +11,26 @@ const y = if true
 	then x
 	else [5];
 
+const tail = |xs| [];
+
 const len: [Int] -> _ = |xs|
 	if xs = []
 	then 0
-	else 1 + len(xs);
+	else 1 + len(tail(xs));
 
 #data Option |T| = { Some: T, None };
 
-const z: { Some: Int, None } = 4;
+#const sum_0: { Int | () } = { some: 5 };
+#const sum_1: { some: Int, none: () } = { some: 5 };
+
+#const product_0: { Int, Int } = { 4, 5 };
+#const product_1: { a: Int, b: Int } = { a: 4, b: 5 };
+
+const foo: { Int | Bool } = if true
+	then { 5 }
+	else { true };
+
+const bar: { Bool, _ } = { true, 4 };
 
 #const main =
 #	>> print("Hello, world!")

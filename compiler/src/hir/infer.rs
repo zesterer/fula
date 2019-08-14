@@ -35,10 +35,39 @@ impl<'a> Type<'a> {
                     .map(|(a, b)| a.homogenize(b))
                     .collect::<Result<(), _>>()?;
             },
-            (Type::Sum(_), _) => {
-                // TODO: Add a way to check whether one variant is equivalent
-                unimplemented!()
+            (Type::Unit, Type::Unit) => {},
+            (mut this @ Type::Singular(_), mut other @ Type::Singular(_)) => {
+                let combined = if let (Type::Singular(a), Type::Singular(b)) = (&mut this, &mut other) {
+                    Type::Sum { fixed: false, variants: vec![(*a).clone(), (*b).clone()] }
+                } else {
+                    unreachable!()
+                };
+                *this = combined.clone();
+                *other = combined.clone();
             },
+            (mut this @ Type::Sum { fixed: false, .. }, mut other @ Type::Sum { fixed: false, .. }) => {
+                let combined = if let (Type::Sum { fixed: false, variants: a }, Type::Sum { fixed: false, variants: b }) = (&mut this, &mut other) {
+                    Type::Sum { fixed: false, variants: a.iter().cloned().chain(b.iter().cloned()).collect() }
+                } else {
+                    unreachable!()
+                };
+                *this = combined.clone();
+                *other = combined.clone();
+            },
+            /*
+            (Type::Sum { fixed: true, variants: a }, Type::Sum { fixed: false, variants: b }) => {
+                'b: for b in b {
+                    for a in a {
+                        if a.matches(b) {
+                            a.homogenize(b)?;
+                            continue 'b;
+                        }
+                    }
+                    return Err(HirError::TypeMismatch(r0, this.clone(), r1, other.clone()));
+                }
+            },
+            (this @ Type::Sum { fixed: false, .. }, other @ Type::Sum { fixed: true, .. }) => other.homogenize(this)?,
+            */
             (this, other) => return Err(HirError::TypeMismatch(r0, this.clone(), r1, other.clone())),
         }
         Ok(())
@@ -355,6 +384,13 @@ impl<'a> IrNode<'a, Expr<'a>> {
                 } else {
                     panic!();
                 };
+            },
+            Expr::Unit => {
+                self.type_info.homogenize(&mut TypeInfo::new(Type::Unit, self.src_ref))?;
+            },
+            Expr::Singular(expr) => {
+                expr.infer_types(scope)?;
+                self.type_info.homogenize(&mut TypeInfo::new(Type::Singular(expr.type_info.clone()), self.src_ref))?;
             },
             Expr::Tuple(fields) => {
                 fields

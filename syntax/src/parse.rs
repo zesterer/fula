@@ -38,7 +38,7 @@ impl<'a, 'b> fmt::Display for Thing<'a, 'b> {
             Thing::Ident => write!(f, "identifier"),
             Thing::Expr => write!(f, "expression"),
             Thing::Atom => write!(f, "expression"),
-            Thing::Lexeme(l) => write!(f, "`{}`", l),
+            Thing::Lexeme(l) => write!(f, "'{}'", l),
         }
     }
 }
@@ -243,12 +243,20 @@ fn parse_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Expr<'a>>, ParseError<'
         Lexeme::Int(x) => Some(Ok(Expr::literal(Literal::Int(*x), tok.src_ref()))),
         Lexeme::Float(x) => Some(Ok(Expr::literal(Literal::Float(*x), tok.src_ref()))),
         Lexeme::String(x) => Some(Ok(Expr::literal(Literal::String(x.clone()), tok.src_ref()))),
-        Lexeme::LParen => match parse_args(iter) {
+        Lexeme::LParen => match parse_expr(iter) {
+            Ok(inner) => try_parse(iter, |tok_r, _| match tok_r.lexeme() {
+                Lexeme::RParen => Some(Ok(inner)),
+                l => Some(Err(ParseError::expected(&Lexeme::RParen, l, tok_r.src_ref()))),
+            }),
+            Err(err) => Some(Err(err)),
+        },
+        Lexeme::LBrace => match parse_args(iter) {
             Ok(mut fields) => try_parse(iter, |tok_r, _| match tok_r.lexeme() {
-                Lexeme::RParen => {
+                Lexeme::RBrace => {
                     let r = tok.src_ref().union(tok_r.src_ref());
                     Some(Ok(match fields.len() {
-                        1 => fields.remove(0).unwrap(),
+                        0 => Expr::unit(r),
+                        1 => Expr::singular(fields.remove(0).unwrap(), r),
                         _ => Expr::tuple(fields, r),
                     }))
                 },
@@ -362,63 +370,45 @@ fn parse_params<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<(Pattern<'a>
     Ok(params)
 }
 
-fn parse_type_list<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<AstNode<Type<'a>>>, ParseError<'a, 'b>>
+fn parse_field_list<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseError<'a, 'b>>
     where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
 {
-    let mut types = VecDeque::new();
+    let mut fields = VecDeque::new();
+    let mut product = None;
 
     loop {
         match attempt(iter, parse_type) {
-            Some(pat) => types.push_back(pat),
+            Some(pat) => fields.push_back(pat),
             None => break,
         }
 
         match try_parse(iter, |tok, _| match tok.lexeme() {
-            Lexeme::Comma => Some(()),
+            Lexeme::Comma => Some((true, tok)),
+            Lexeme::Pipe => Some((false, tok)),
             _ => None,
         }) {
-            Some(_) => {},
+            Some((is_product, tok)) => {
+                product = product.or(Some(is_product));
+                match (Some(is_product), product) {
+                    (Some(true), Some(false)) =>
+                        return Err(ParseError::expected(&Lexeme::Comma, &Lexeme::Pipe, tok.src_ref())),
+                    (Some(false), Some(true)) =>
+                        return Err(ParseError::expected(&Lexeme::Pipe, &Lexeme::Comma, tok.src_ref())),
+                    _ => {},
+                }
+            },
             None => break,
         }
     }
 
-    Ok(types)
-}
-
-fn parse_variant<'a, 'b, I>(iter: &mut I) -> Result<(&'a str, AstNode<Type<'a>>), ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
-{
-    try_parse(iter, |tok_name, iter| match tok_name.lexeme() {
-        Lexeme::Ident(name) => try_parse_or(iter, |tok, iter| match tok.lexeme() {
-            Lexeme::Colon => Ok(parse_type(iter).map(|ty| (*name, ty))),
-            _ => Err(Ok((name, Type::unit(tok_name.src_ref())))),
-        }),
-        l => Some(Err(ParseError::expected(Thing::Variant, l, tok_name.src_ref()))),
+    Ok(match fields.len() {
+        0 => Type::unit(SrcRef::None),
+        1 => Type::singular(fields.remove(0).unwrap(), SrcRef::None),
+        _ => match product.unwrap() {
+            true => Type::tuple(fields.into_iter().collect(), SrcRef::None),
+            false => Type::sum(fields.into_iter().collect(), SrcRef::None),
+        },
     })
-        .unwrap()
-}
-
-fn parse_variant_list<'a, 'b, I>(iter: &mut I) -> Result<VecDeque<(&'a str, AstNode<Type<'a>>)>, ParseError<'a, 'b>>
-    where 'b: 'a, I: Iterator<Item=&'b Token<'a>> + Clone + fmt::Debug
-{
-    let mut variants = VecDeque::new();
-
-    loop {
-        match attempt(iter, parse_variant) {
-            Some(pat) => variants.push_back(pat),
-            None => break,
-        }
-
-        match try_parse(iter, |tok, _| match tok.lexeme() {
-            Lexeme::Comma => Some(()),
-            _ => None,
-        }) {
-            Some(_) => {},
-            None => break,
-        }
-    }
-
-    Ok(variants)
 }
 
 fn parse_pattern<'a, 'b, I>(iter: &mut I) -> Result<AstNode<(Pattern<'a>, Type<'a>)>, ParseError<'a, 'b>>
@@ -460,25 +450,19 @@ fn parse_type_atom<'a, 'b, I>(iter: &mut I) -> Result<AstNode<Type<'a>>, ParseEr
         Lexeme::Ident("_") => Some(Ok(Type::unspecified(tok.src_ref()))),
         Lexeme::Ident(ident) => Some(Ok(Type::ident(ident, tok.src_ref()))),
         Lexeme::Universe => Some(Ok(Type::universe(tok.src_ref()))),
-        Lexeme::LParen => match parse_type_list(iter) {
-            Ok(mut fields) => try_parse(iter, |tok_r, _| match tok_r.lexeme() {
-                Lexeme::RParen => {
-                    let r = tok.src_ref().union(tok_r.src_ref());
-                    Some(Ok(match fields.len() {
-                        0 => Type::unit(r),
-                        1 => fields.remove(0).unwrap(),
-                        _ => Type::tuple(fields.into_iter().collect(), r),
-                    }))
-                },
+        Lexeme::LParen => match parse_type(iter) {
+            Ok(inner) => try_parse(iter, |tok_r, _| match tok_r.lexeme() {
+                Lexeme::RParen => Some(Ok(inner)),
                 l => Some(Err(ParseError::expected(&Lexeme::RParen, l, tok_r.src_ref()))),
             }),
             Err(err) => Some(Err(err)),
         },
-        Lexeme::LBrace => match parse_variant_list(iter) {
-            Ok(variants) => try_parse(iter, |tok_r, _| match tok_r.lexeme() {
+        Lexeme::LBrace => match parse_field_list(iter) {
+            Ok(mut ty) => try_parse(iter, |tok_r, _| match tok_r.lexeme() {
                 Lexeme::RBrace => {
                     let r = tok.src_ref().union(tok_r.src_ref());
-                    Some(Ok(Type::sum(variants.into_iter().collect(), r)))
+                    ty.set_src_ref(r);
+                    Some(Ok(ty))
                 },
                 l => Some(Err(ParseError::expected(&Lexeme::RBrace, l, tok_r.src_ref()))),
             }),
@@ -522,6 +506,7 @@ fn try_parse<'a, 'c: 'a, I, R, F>(iter: &mut I, f: F) -> Option<R>
     Some(tok)
 }
 
+/*
 fn try_parse_or<'a, 'c: 'a, I, R, F>(iter: &mut I, f: F) -> Option<R>
     where
         I: Iterator<Item=&'a Token<'c>> + Clone,
@@ -538,6 +523,7 @@ fn try_parse_or<'a, 'c: 'a, I, R, F>(iter: &mut I, f: F) -> Option<R>
         Err(tok) => tok,
     })
 }
+*/
 
 fn attempt<'a, 'c: 'a, I, R, E, F>(iter: &mut I, f: F) -> Option<R>
     where

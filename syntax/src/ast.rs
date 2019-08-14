@@ -22,6 +22,10 @@ impl<T> AstNode<T> {
     pub fn src_ref(&self) -> SrcRef {
         self.1
     }
+
+    pub fn set_src_ref(&mut self, r: SrcRef) {
+        self.1 = r;
+    }
 }
 
 impl<T: fmt::Debug> fmt::Debug for AstNode<T> {
@@ -62,6 +66,8 @@ pub enum Expr<'a> {
     Func(AstNode<(Pattern<'a>, Type<'a>)>, AstNode<Self>),
     Call(AstNode<Self>, AstNode<Self>),
     List(Vec<AstNode<Self>>),
+    Unit,
+    Singular(AstNode<Self>),
     Tuple(Vec<AstNode<Self>>),
 }
 
@@ -77,8 +83,10 @@ pub enum Type<'a> {
     Ident(&'a str),
     Func(AstNode<Self>, AstNode<Self>),
     List(AstNode<Self>),
+    Unit,
+    Singular(AstNode<Self>),
     Tuple(Vec<AstNode<Self>>),
-    Sum(Vec<(&'a str, AstNode<Self>)>),
+    Sum(Vec<AstNode<Self>>),
 }
 
 impl<'a> Default for Type<'a> {
@@ -150,6 +158,14 @@ impl<'a> Expr<'a> {
 
     pub fn literal(litr: Literal, r: SrcRef) -> AstNode<Self> {
         AstNode(Expr::Literal(litr).into(), r)
+    }
+
+    pub fn unit(r: SrcRef) -> AstNode<Self> {
+        AstNode(Expr::Unit.into(), r)
+    }
+
+    pub fn singular(expr: AstNode<Expr<'a>>, r: SrcRef) -> AstNode<Self> {
+        AstNode(Expr::Singular(expr).into(), r)
     }
 
     pub fn tuple(fields: VecDeque<AstNode<Expr<'a>>>, r: SrcRef) -> AstNode<Self> {
@@ -247,19 +263,23 @@ impl<'a> Type<'a> {
         AstNode(Type::Unspecified.into(), r)
     }
 
-    pub fn unit(r: SrcRef) -> AstNode<Self> {
-        AstNode(Type::Tuple(Vec::new()).into(), r)
-    }
-
     pub fn universe(r: SrcRef) -> AstNode<Self> {
         AstNode(Type::Universe.into(), r)
+    }
+
+    pub fn unit(r: SrcRef) -> AstNode<Self> {
+        AstNode(Type::Unit.into(), r)
+    }
+
+    pub fn singular(ty: AstNode<Type<'a>>, r: SrcRef) -> AstNode<Self> {
+        AstNode(Type::Singular(ty).into(), r)
     }
 
     pub fn tuple(fields: VecDeque<AstNode<Type<'a>>>, r: SrcRef) -> AstNode<Self> {
         AstNode(Type::Tuple(fields.into_iter().collect()).into(), r)
     }
 
-    pub fn sum(variants: Vec<(&'a str, AstNode<Type<'a>>)>, r: SrcRef) -> AstNode<Self> {
+    pub fn sum(variants: Vec<AstNode<Type<'a>>>, r: SrcRef) -> AstNode<Self> {
         AstNode(Type::Sum(variants).into(), r)
     }
 

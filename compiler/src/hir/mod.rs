@@ -76,7 +76,12 @@ pub enum Type<'a> {
     Func(TypeInfo<'a>, TypeInfo<'a>),
     List(TypeInfo<'a>),
     Tuple(Vec<TypeInfo<'a>>),
-    Sum(Vec<(&'a str, TypeInfo<'a>)>),
+    Unit,
+    Singular(TypeInfo<'a>),
+    Sum {
+        fixed: bool,
+        variants: Vec<TypeInfo<'a>>,
+    },
     Named(&'a str),
 }
 
@@ -100,6 +105,8 @@ pub enum Expr<'a> {
     Func(IrNode<'a, Pattern<'a>>, IrNode<'a, Self>),
     Call(IrNode<'a, Self>, IrNode<'a, Self>),
     List(Vec<IrNode<'a, Self>>),
+    Unit,
+    Singular(IrNode<'a, Self>),
     Tuple(Vec<IrNode<'a, Self>>),
 }
 
@@ -168,7 +175,7 @@ impl<'a> Program<'a> {
         let mut errors = Vec::new();
 
         let mut visitor = |type_info: &TypeInfo| match type_info.ty.borrow().deref() {
-            Type::Unknown => Err(HirError::TypeAmbiguity(type_info.src_ref)),
+            Type::Unknown | Type::Sum { fixed: false, .. } => Err(HirError::TypeAmbiguity(type_info.src_ref)),
             _ => Ok(()),
         };
 
@@ -248,8 +255,10 @@ impl<'a> fmt::Display for Type<'a> {
             Type::Primitive(PrimitiveType::String) => write!(f, "String"),
             Type::Func(x, y) => write!(f, "{} -> {}", x.ty.borrow(), y.ty.borrow()),
             Type::List(ty) => write!(f, "[{}]", ty.ty.borrow()),
-            Type::Tuple(tys) => write!(f, "({})", tys.iter().map(|ty| format!("{}", ty.ty.borrow())).collect::<Vec<_>>().join(", ")),
-            Type::Sum(tys) => write!(f, "{{ {} }}", tys.iter().map(|(name, ty)| format!("{}: {}", name, ty.ty.borrow())).collect::<Vec<_>>().join(", ")),
+            Type::Tuple(tys) => write!(f, "{{ {} }}", tys.iter().map(|ty| format!("{}", ty.ty.borrow())).collect::<Vec<_>>().join(", ")),
+            Type::Unit => write!(f, "{{}}"),
+            Type::Singular(ty) => write!(f, "{{ {} }}", ty.ty.borrow()),
+            Type::Sum { variants, .. } => write!(f, "{{ {} }}", variants.iter().map(|ty| format!("{}", ty.ty.borrow())).collect::<Vec<_>>().join(" | ")),
             Type::Named(name) => write!(f, "{}", name),
         }
     }
